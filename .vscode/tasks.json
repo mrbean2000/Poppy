@@ -7,6 +7,13 @@
 			"command": "git status --short",
 			"isBackground": false,
 			"problemMatcher": []
+		},
+		{
+			"label": "Check Git operation status",
+			"type": "shell",
+			"command": "git status --short --branch; if (Test-Path .git\\index.lock) { Write-Output 'index.lock present' } else { Write-Output 'No index.lock' }; if (Test-Path .git\\MERGE_HEAD) { Write-Output 'Merge in progress' } else { Write-Output 'No merge in progress' }; if (Test-Path .git\\CHERRY_PICK_HEAD) { Write-Output 'Cherry-pick in progress' } else { Write-Output 'No cherry-pick in progress' }; if (Test-Path .git\\REVERT_HEAD) { Write-Output 'Revert in progress' } else { Write-Output 'No revert in progress' }",
+			"isBackground": false,
+			"problemMatcher": []
 		}
 	]
 }
