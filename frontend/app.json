@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "RNCourse",
+    "slug": "RNCourse",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "ios": {
+      "bundleIdentifier": "com.funread.poppy",
+      "supportsTablet": true,
+      "usesAppleSignIn": true
+    },
+    "android": {
+      "package": "com.funread.poppy",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "plugins": [
+      "expo-status-bar",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Poppy to use your camera to import vocabulary."
+        }
+      ],
+      "expo-asset",
+      "expo-web-browser",
+      "expo-apple-authentication",
+      "expo-audio",
+      "expo-notifications",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/masot/poppy_loadingscreen.png",
+          "imageWidth": 400,
+          "resizeMode": "cover",
+          "backgroundColor": "#F7F1E8"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "66bffc0c-03a0-401f-a216-8c2532a059f1"
+      }
+    }
+  }
+}
