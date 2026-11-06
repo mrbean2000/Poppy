@@ -5,8 +5,9 @@ from collections import OrderedDict
 from pathlib import Path
 
 import torch
-import whisper
+from faster_whisper import WhisperModel, BatchedInferencePipeline
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 
 MAX_AUDIO_BYTES = 512 * 1024 * 1024
 MAX_CACHED_TRANSCRIPTS = 100
@@ -48,7 +49,8 @@ def get_model():
                         detail="WHISPER_DEVICE must be auto, cpu, or cuda.",
                     )
 
-                model = whisper.load_model("turbo", device=device)
+                model = WhisperModel("tiny", device=device, compute_type="float16")
+                model = BatchedInferencePipeline(model = model)
     return model
 
 
@@ -67,6 +69,30 @@ def cache_transcript(episode_id, transcript):
         while len(transcript_cache) > MAX_CACHED_TRANSCRIPTS:
             transcript_cache.popitem(last=False)
 
+async def generate_transcript(transcription_model, temporary_path):
+    try:
+        with model_lock:
+            segments, info = transcription_model.transcribe(
+                temporary_path,
+                batch_size=8,
+                chunk_length=1,
+                language="zh",
+                vad_filter=True
+            )
+    except HTTPException:
+        raise
+    except Exception as error:
+        print(error)
+        raise HTTPException(
+            status_code=502,
+            detail="Whisper could not transcribe this audio file.",
+        ) from error
+
+    for segment in segments:
+        yield f"[{segment.start:.2f}] --> [{segment.end:.2f}] {segment.text}" + "\n"
+
+    if temporary_path and os.path.exists(temporary_path):
+        os.remove(temporary_path)
 
 @app.get("/health")
 def health():
@@ -74,7 +100,7 @@ def health():
 
 
 @app.post("/transcribe")
-def transcribe(
+async def transcribe(
     episode_id: str = Form(...),
     audio: UploadFile = File(...),
 ):
@@ -112,42 +138,12 @@ def transcribe(
             raise HTTPException(status_code=400, detail="The audio file is empty.")
 
         transcription_model = get_model()
-        try:
-            with model_lock:
-                result = transcription_model.transcribe(
-                    temporary_path,
-                    fp16=next(transcription_model.parameters()).is_cuda,
-                    verbose=False,
-                )
-        except HTTPException:
-            raise
-        except Exception as error:
-            raise HTTPException(
-                status_code=502,
-                detail="Whisper could not transcribe this audio file.",
-            ) from error
-
-        cues = [
-            {
-                "start": segment["start"],
-                "end": segment["end"],
-                "text": segment["text"].strip(),
-            }
-            for segment in result.get("segments", [])
-            if segment.get("text", "").strip()
-        ]
-        if not cues:
-            raise HTTPException(
-                status_code=502,
-                detail="Whisper returned no transcript segments.",
-            )
-
-        transcript = {"cues": cues, "isTimed": True}
-        cache_transcript(normalized_episode_id, transcript)
-        return transcript
+        return StreamingResponse(
+            generate_transcript(transcription_model, temporary_path),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "Keep-alive"}
+        )
     finally:
-        if temporary_path and os.path.exists(temporary_path):
-            os.remove(temporary_path)
         audio.file.close()
 
 
