@@ -6,6 +6,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
+
 public interface UserPassageProgressRepository extends JpaRepository<UserPassageProgress, Integer> {
     @Query("select new Passage(" +
             "passage.id, passage.passage, passage.title, " +
@@ -14,4 +16,6 @@ public interface UserPassageProgressRepository extends JpaRepository<UserPassage
             "join progress.lastReadPassage passage " +
             "where progress.userId = :userId")
     Passage findByUserId(@Param("userId") int userId);
+
+    List<UserPassageProgress> findByUserIdOrderByLastReadAtDescIdDesc(Long userId);
 }

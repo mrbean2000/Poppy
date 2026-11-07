@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import {
   ActivityIndicator,
   Animated,
@@ -32,20 +33,47 @@ export default function ImportScreen({ navigation, route }) {
   const cameraRef = useRef(null);
   const [permission, requestPermission] = useCameraPermissions();
 
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(contentOpacity, {
-        toValue: 1,
-        duration: 220,
-        useNativeDriver: true,
-      }),
-      Animated.timing(contentOffset, {
-        toValue: 0,
-        duration: 220,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [contentOffset, contentOpacity]);
+  useFocusEffect(
+    useCallback(() => {
+      contentOpacity.setValue(0);
+      contentOffset.setValue(20);
+
+      const animation = Animated.parallel([
+        Animated.timing(contentOpacity, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.timing(contentOffset, {
+          toValue: 0,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+      ]);
+
+      animation.start();
+
+      return () => animation.stop();
+    }, [contentOffset, contentOpacity]),
+  );
+
+  const goBack = () => {
+    animateBackPressIn();
+    setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(contentOpacity, {
+          toValue: 0,
+          duration: 170,
+          useNativeDriver: true,
+        }),
+        Animated.timing(contentOffset, {
+          toValue: -20,
+          duration: 170,
+          useNativeDriver: true,
+        }),
+      ]).start(() => navigation.goBack());
+    }, 110);
+  };
 
   const toggleFacing = () => {
     setFacing((current) => (current === "back" ? "front" : "back"));
@@ -101,14 +129,13 @@ export default function ImportScreen({ navigation, route }) {
         <View style={styles.topBar}>
           <Animated.View style={{ transform: [{ scale: backPressScale }] }}>
             <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => navigation.goBack()}
+              onPress={goBack}
               onPressIn={animateBackPressIn}
               onPressOut={animateBackPressOut}
               accessibilityRole="button"
               accessibilityLabel="Go back"
             >
-              <ChevronLeft size={28} color="#203B32" />
+              <Text style={[styles.back, { color: theme.colors.text }]}>‹</Text>
             </TouchableOpacity>
           </Animated.View>
         </View>
@@ -125,8 +152,10 @@ export default function ImportScreen({ navigation, route }) {
           <Text style={[styles.title, { color: theme.colors.text }]}>
             Import
           </Text>
-          <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
-            Import vocabulary to start learning.
+          <Text
+            style={[styles.subtitle, { color: theme.colors.textSecondary }]}
+          >
+            Import passage to start learning.
           </Text>
           <View style={styles.buttonGroup}>
             <TouchableOpacity
@@ -134,10 +163,7 @@ export default function ImportScreen({ navigation, route }) {
               onPress={() => navigation.navigate("ImportUrl")}
             >
               <Text
-                style={[
-                  styles.buttonText,
-                  { color: theme.colors.primaryText },
-                ]}
+                style={[styles.buttonText, { color: theme.colors.primaryText }]}
               >
                 Import via URL
               </Text>
@@ -148,7 +174,7 @@ export default function ImportScreen({ navigation, route }) {
             >
               <Text style={styles.buttonText}>Import Yourself</Text>
             </TouchableOpacity>
-            <TouchableOpacity
+            {/* <TouchableOpacity
               style={[styles.button, { backgroundColor: theme.colors.primary }]}
               onPress={() => setShowCamera(true)}
             >
@@ -160,89 +186,88 @@ export default function ImportScreen({ navigation, route }) {
               >
                 Import via Camera
               </Text>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
           </View>
         </Animated.View>
 
         {/* Half-Screen Camera Overlay */}
         {showCamera && (
           <View style={styles.halfScreenOverlay}>
-          {!permission ? (
-            <View style={styles.cameraPermission}>
-              <ActivityIndicator size="large" color="#242424" />
-            </View>
-          ) : !permission.granted ? (
-            <View style={styles.cameraPermission}>
-              <CameraIcon size={36} color="#242424" />
-              <Text style={styles.cameraTitle}>Camera Access Required</Text>
-              <Text style={styles.cameraMessage}>
-                We need access to your camera to scan vocabulary.
-              </Text>
-              <TouchableOpacity
-                style={styles.permissionButton}
-                onPress={requestPermission}
-              >
-                <Text style={styles.permissionButtonText}>
-                  Grant Permission
+            {!permission ? (
+              <View style={styles.cameraPermission}>
+                <ActivityIndicator size="large" color="#242424" />
+              </View>
+            ) : !permission.granted ? (
+              <View style={styles.cameraPermission}>
+                <CameraIcon size={36} color="#242424" />
+                <Text style={styles.cameraTitle}>Camera Access Required</Text>
+                <Text style={styles.cameraMessage}>
+                  We need access to your camera to scan vocabulary.
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setShowCamera(false)}>
-                <Text style={styles.cancelText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.halfCameraContainer}>
-              <View style={styles.cameraCard}>
-                {/* Camera stays as the background */}
-                <CameraView
-                  ref={cameraRef}
-                  style={styles.camera}
-                  facing={facing}
-                />
+                <TouchableOpacity
+                  style={styles.permissionButton}
+                  onPress={requestPermission}
+                >
+                  <Text style={styles.permissionButtonText}>
+                    Grant Permission
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowCamera(false)}>
+                  <Text style={styles.cancelText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.halfCameraContainer}>
+                <View style={styles.cameraCard}>
+                  {/* Camera stays as the background */}
+                  <CameraView
+                    ref={cameraRef}
+                    style={styles.camera}
+                    facing={facing}
+                  />
 
-                {/* Controls are explicitly layered ABOVE the camera */}
-                <View style={styles.cameraOverlay} pointerEvents="box-none">
-                  <View style={styles.cameraControls}>
-                    <TouchableOpacity
-                      style={styles.controlButton}
-                      onPress={() => setShowCamera(false)}
-                      accessibilityLabel="Close camera"
-                    >
-                      <ChevronLeft size={22} color="#FFFFFF" />
-                    </TouchableOpacity>
+                  {/* Controls are explicitly layered ABOVE the camera */}
+                  <View style={styles.cameraOverlay} pointerEvents="box-none">
+                    <View style={styles.cameraControls}>
+                      <TouchableOpacity
+                        style={styles.controlButton}
+                        onPress={() => setShowCamera(false)}
+                        accessibilityLabel="Close camera"
+                      >
+                        <ChevronLeft size={22} color="#FFFFFF" />
+                      </TouchableOpacity>
 
-                    <TouchableOpacity
-                      style={[
-                        styles.captureButton,
-                        isCapturing && styles.disabledButton,
-                      ]}
-                      onPress={handleTakePicture}
-                      disabled={isCapturing}
-                      activeOpacity={0.8}
-                      accessibilityLabel="Take picture"
-                    >
-                      {isCapturing ? (
-                        <ActivityIndicator color="#242424" />
-                      ) : (
-                        <View style={styles.captureInner} />
-                      )}
-                    </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.captureButton,
+                          isCapturing && styles.disabledButton,
+                        ]}
+                        onPress={handleTakePicture}
+                        disabled={isCapturing}
+                        activeOpacity={0.8}
+                        accessibilityLabel="Take picture"
+                      >
+                        {isCapturing ? (
+                          <ActivityIndicator color="#242424" />
+                        ) : (
+                          <View style={styles.captureInner} />
+                        )}
+                      </TouchableOpacity>
 
-                    <TouchableOpacity
-                      style={styles.controlButton}
-                      onPress={toggleFacing}
-                      accessibilityLabel="Switch camera"
-                    >
-                      <RotateCcw size={22} color="#FFFFFF" />
-                    </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.controlButton}
+                        onPress={toggleFacing}
+                        accessibilityLabel="Switch camera"
+                      >
+                        <RotateCcw size={22} color="#FFFFFF" />
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
               </View>
-            </View>
-          )}
+            )}
           </View>
         )}
-
       </SafeAreaView>
     </ImageBackground>
   );
@@ -257,16 +282,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 24,
-    paddingTop: 4,
+    paddingTop: 24,
   },
-  backButton: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 22,
-    backgroundColor: "#FFFCF5",
-    elevation: 3,
+  back: {
+    fontSize: 36,
+    lineHeight: 36,
   },
   content: {
     flex: 1,

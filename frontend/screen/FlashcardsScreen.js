@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Animated,
+  ImageBackground,
   Modal,
   PanResponder,
   Pressable,
@@ -22,11 +23,15 @@ import {
 import { useTheme } from "../theme/ThemeContext";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
-const USER_ID = 1;
+const DEFAULT_USER_ID = 1;
 const SWIPE_DISTANCE = 80;
 
 export default function FlashcardsScreen({ navigation, route }) {
-  const { theme } = useTheme();
+  const { theme, isDarkMode, backendUserId } = useTheme();
+  const userId = backendUserId ?? DEFAULT_USER_ID;
+  const cardBackground = isDarkMode ? "#000000" : "#FFFFFF";
+  const userIdRef = useRef(userId);
+  userIdRef.current = userId;
   const [vocabulary, setVocabulary] = useState([]);
   const flipProgress = useRef(new Animated.Value(0)).current;
   const [isFlipped, setIsFlipped] = useState(false);
@@ -61,7 +66,7 @@ export default function FlashcardsScreen({ navigation, route }) {
       try {
         setIsLoading(true);
         setErrorMessage(null);
-        const allEntries = await getUserVocabulary(USER_ID);
+        const allEntries = await getUserVocabulary(userId);
         const filter = route.params?.filter;
         const entries =
           filter === "Learning"
@@ -86,7 +91,7 @@ export default function FlashcardsScreen({ navigation, route }) {
     return () => {
       isCurrent = false;
     };
-  }, [route.params?.filter]);
+  }, [route.params?.filter, userId]);
 
   useEffect(
     () => () => {
@@ -208,7 +213,11 @@ export default function FlashcardsScreen({ navigation, route }) {
         ),
       );
 
-      updateVocabularyStatus(USER_ID, currentEntry.word, nextStatusLevel).catch(
+      updateVocabularyStatus(
+        userIdRef.current,
+        currentEntry.word,
+        nextStatusLevel,
+      ).catch(
         (error) => {
           console.warn("Failed to update vocabulary status:", error);
           setVocabulary((entries) =>
@@ -269,7 +278,7 @@ export default function FlashcardsScreen({ navigation, route }) {
 
     try {
       const updatedEntry = await updateVocabularyFavorite(
-        USER_ID,
+        userIdRef.current,
         cardEntry.word,
         shouldFavorite,
       );
@@ -681,9 +690,16 @@ export default function FlashcardsScreen({ navigation, route }) {
   const isEnglishFace = isEnglishFront ? !isFlipped : isFlipped;
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    <ImageBackground
+      source={
+        isDarkMode
+          ? require("../assets/images/masot/backgroundimagequestion_darkmode.png")
+          : require("../assets/images/masot/backgroundimagequestion.png")
+      }
+      style={styles.container}
+      resizeMode="cover"
     >
+    <SafeAreaView style={[styles.container, { backgroundColor: "transparent" }]}>
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
@@ -876,7 +892,7 @@ export default function FlashcardsScreen({ navigation, route }) {
                   styles.card,
                   styles.completionCard,
                   {
-                    backgroundColor: theme.colors.surface,
+                    backgroundColor: cardBackground,
                     borderColor: theme.colors.border,
                   },
                 ]}
@@ -906,7 +922,7 @@ export default function FlashcardsScreen({ navigation, route }) {
                 style={[
                   styles.card,
                   {
-                    backgroundColor: theme.colors.surface,
+                    backgroundColor: cardBackground,
                     borderColor: isSwipingRight
                       ? theme.colors.primaryDark
                       : isSwipingLeft
@@ -934,7 +950,7 @@ export default function FlashcardsScreen({ navigation, route }) {
                   style={[
                     styles.cardFace,
                     {
-                      backgroundColor: theme.colors.surface,
+                      backgroundColor: cardBackground,
                       opacity: frontFaceOpacity,
                     },
                   ]}
@@ -974,7 +990,7 @@ export default function FlashcardsScreen({ navigation, route }) {
                     styles.cardFace,
                     styles.cardFaceBack,
                     {
-                      backgroundColor: theme.colors.surface,
+                      backgroundColor: cardBackground,
                       opacity: backFaceOpacity,
                     },
                   ]}
@@ -1258,6 +1274,7 @@ export default function FlashcardsScreen({ navigation, route }) {
         </View>
       </Modal>
     </SafeAreaView>
+    </ImageBackground>
   );
 }
 

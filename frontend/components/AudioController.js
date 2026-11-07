@@ -8,6 +8,8 @@ export default function AudioController({
   onSkip,
   onPlayPress,
   onRatePress,
+  isAutoScrollEnabled,
+  onAutoScrollToggle,
 }) {
   return (
     <View
@@ -58,6 +60,21 @@ export default function AudioController({
         >
           <Text style={styles.speedLabel}>{speechRate}x</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.iconButton, isAutoScrollEnabled && styles.iconButtonActive]}
+          onPress={onAutoScrollToggle}
+          accessibilityRole="button"
+          accessibilityState={{ selected: isAutoScrollEnabled }}
+          accessibilityLabel={
+            isAutoScrollEnabled ? "Disable auto scroll" : "Enable auto scroll"
+          }
+        >
+          <MaterialCommunityIcons
+            name="swap-vertical"
+            size={20}
+            color={isAutoScrollEnabled ? "#FFFFFF" : "#1766B1"}
+          />
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -88,6 +105,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 17,
     backgroundColor: "#E7EEF8",
+  },
+  iconButtonActive: {
+    backgroundColor: "#1766B1",
   },
   playButton: {
     width: 48,

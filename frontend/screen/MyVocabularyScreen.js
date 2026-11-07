@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Animated,
+  ImageBackground,
   PanResponder,
   SafeAreaView,
   ScrollView,
@@ -9,6 +10,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -16,19 +18,36 @@ import { useFocusEffect } from "@react-navigation/native";
 import * as Speech from "expo-speech";
 import {
   getMandarinWordDefinition,
+  getUserProfileByFirebaseUid,
   getUserVocabulary,
   updateVocabularyFavorite,
 } from "../util/http";
+import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../theme/ThemeContext";
 
 const filters = ["All", "Learning", "Mastered", "Favorites"];
-const USER_ID = 1;
+const DEFAULT_USER_ID = 1;
 
 export default function MyVocabularyScreen({ navigation, route }) {
-  const { theme } = useTheme();
+  const { theme, isDarkMode, backendUserId } = useTheme();
+  const userId = backendUserId ?? DEFAULT_USER_ID;
+  const { user } = useAuth();
+  const [firstName, setFirstName] = useState("");
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    getUserProfileByFirebaseUid(user.uid)
+      .then((profile) => setFirstName(profile?.firstName?.trim() || ""))
+      .catch(() => {});
+  }, [user?.uid]);
+  const itemBackground = isDarkMode ? "#000000" : theme.colors.surface;
   const [vocabulary, setVocabulary] = useState([]);
   const [favorites, setFavorites] = useState([]);
   const favoriteUpdatesRef = useRef(new Set());
+  const pageScrollRef = useRef(null);
+  const searchBoxYRef = useRef(0);
+  const { height: windowHeight } = useWindowDimensions();
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -53,7 +72,7 @@ export default function MyVocabularyScreen({ navigation, route }) {
         try {
           if (!hasLoadedVocabulary) setIsLoading(true);
           setErrorMessage(null);
-          const entries = await getUserVocabulary(USER_ID);
+          const entries = await getUserVocabulary(userId);
           if (isCurrent) {
             hasLoadedVocabularyRef.current = true;
             setVocabulary(entries);
@@ -80,7 +99,7 @@ export default function MyVocabularyScreen({ navigation, route }) {
       return () => {
         isCurrent = false;
       };
-    }, []),
+    }, [userId]),
   );
 
   const filteredVocabulary = useMemo(() => {
@@ -171,7 +190,7 @@ export default function MyVocabularyScreen({ navigation, route }) {
 
     try {
       const updatedEntry = await updateVocabularyFavorite(
-        USER_ID,
+        userId,
         word,
         shouldFavorite,
       );
@@ -287,372 +306,395 @@ export default function MyVocabularyScreen({ navigation, route }) {
   const currentEntry = filteredVocabulary[cardIndex];
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    <ImageBackground
+      source={
+        isDarkMode
+          ? require("../assets/images/masot/backgroundimagequestion_darkmode.png")
+          : require("../assets/images/masot/backgroundimagequestion.png")
+      }
+      style={styles.backgroundImage}
+      resizeMode="cover"
     >
-      <ScrollView contentContainerStyle={styles.content}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-          hitSlop={10}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: "transparent" }]}
+      >
+        <ScrollView
+          ref={pageScrollRef}
+          contentContainerStyle={[
+            styles.content,
+            isSearchFocused && { paddingBottom: windowHeight },
+          ]}
+          keyboardShouldPersistTaps="handled"
         >
-          <Text style={[styles.backIcon, { color: theme.colors.text }]}>‹</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <Text style={[styles.backIcon, { color: theme.colors.text }]}>
+              ‹
+            </Text>
+          </TouchableOpacity>
 
-        {!isLoading && !errorMessage && currentEntry && (
-          <>
-            <Animated.View
-              {...cardPanResponder.panHandlers}
-              style={[
-                styles.vocabularyCard,
-                {
-                  backgroundColor: theme.colors.surface,
-                  borderColor: theme.colors.border,
-                  transform: [
-                    { translateX: cardPosition.x },
-                    {
-                      scaleY: cardFlip.interpolate({
-                        inputRange: [0, 0.5, 1],
-                        outputRange: [1, 0, 1],
-                      }),
-                    },
-                  ],
-                },
-              ]}
-            >
-              <TouchableOpacity
-                activeOpacity={0.9}
-                onPress={flipCard}
-                accessibilityRole="button"
-                accessibilityLabel={`${isCardFlipped ? "Show word" : "Show English definition for"} ${currentEntry.word}`}
-                style={styles.cardFaceContainer}
+          {!isLoading && !errorMessage && currentEntry && (
+            <>
+              <Animated.View
+                {...cardPanResponder.panHandlers}
+                style={[
+                  styles.vocabularyCard,
+                  {
+                    backgroundColor: itemBackground,
+                    borderColor: theme.colors.border,
+                    transform: [
+                      { translateX: cardPosition.x },
+                      {
+                        scaleY: cardFlip.interpolate({
+                          inputRange: [0, 0.5, 1],
+                          outputRange: [1, 0, 1],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
               >
-                <Animated.View
-                  style={[
-                    styles.cardFace,
-                    {
-                      opacity: cardFlip.interpolate({
-                        inputRange: [0, 0.5, 1],
-                        outputRange: [1, 0, 0],
-                      }),
-                    },
-                  ]}
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={flipCard}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${isCardFlipped ? "Show word" : "Show English definition for"} ${currentEntry.word}`}
+                  style={styles.cardFaceContainer}
                 >
-                  <Text style={[styles.cardWord, { color: theme.colors.text }]}>
-                    {currentEntry.word}
-                  </Text>
-                  {currentEntry.pinyin && (
-                    <Text style={styles.cardPinyin}>{currentEntry.pinyin}</Text>
-                  )}
-                </Animated.View>
-                <Animated.View
-                  style={[
-                    styles.cardFace,
-                    styles.cardBack,
-                    {
-                      opacity: cardFlip.interpolate({
-                        inputRange: [0, 0.5, 1],
-                        outputRange: [0, 0, 1],
-                      }),
-                    },
-                  ]}
-                >
-                  {isDefinitionLoading ? (
+                  <Animated.View
+                    style={[
+                      styles.cardFace,
+                      {
+                        opacity: cardFlip.interpolate({
+                          inputRange: [0, 0.5, 1],
+                          outputRange: [1, 0, 0],
+                        }),
+                      },
+                    ]}
+                  >
                     <Text
-                      style={[
-                        styles.definitionText,
-                        { color: theme.colors.textSecondary },
-                      ]}
+                      style={[styles.cardWord, { color: theme.colors.text }]}
                     >
-                      Looking up meaning...
+                      {currentEntry.word}
                     </Text>
-                  ) : definitionError ? (
-                    <Text style={styles.definitionText}>{definitionError}</Text>
-                  ) : cardDefinition?.definitions?.length ? (
-                    cardDefinition.definitions.map((meaning, index) => (
+                    {currentEntry.pinyin && (
+                      <Text style={styles.cardPinyin}>
+                        {currentEntry.pinyin}
+                      </Text>
+                    )}
+                  </Animated.View>
+                  <Animated.View
+                    style={[
+                      styles.cardFace,
+                      styles.cardBack,
+                      {
+                        opacity: cardFlip.interpolate({
+                          inputRange: [0, 0.5, 1],
+                          outputRange: [0, 0, 1],
+                        }),
+                      },
+                    ]}
+                  >
+                    {isDefinitionLoading ? (
                       <Text
-                        key={`${meaning}-${index}`}
+                        style={[
+                          styles.definitionText,
+                          { color: theme.colors.textSecondary },
+                        ]}
+                      >
+                        Looking up meaning...
+                      </Text>
+                    ) : definitionError ? (
+                      <Text style={styles.definitionText}>
+                        {definitionError}
+                      </Text>
+                    ) : cardDefinition?.definitions?.length ? (
+                      cardDefinition.definitions.map((meaning, index) => (
+                        <Text
+                          key={`${meaning}-${index}`}
+                          style={[
+                            styles.definitionText,
+                            { color: theme.colors.text },
+                          ]}
+                        >
+                          {`${index + 1}. ${meaning}`}
+                        </Text>
+                      ))
+                    ) : (
+                      <Text
                         style={[
                           styles.definitionText,
                           { color: theme.colors.text },
                         ]}
                       >
-                        {`${index + 1}. ${meaning}`}
+                        No definition available.
                       </Text>
-                    ))
-                  ) : (
-                    <Text
-                      style={[
-                        styles.definitionText,
-                        { color: theme.colors.text },
-                      ]}
-                    >
-                      No definition available.
-                    </Text>
-                  )}
-                </Animated.View>
-              </TouchableOpacity>
-            </Animated.View>
-            <ScrollView
-              horizontal
-              scrollEnabled={false}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.cardPagination}
-              style={styles.cardPaginationViewport}
-            >
-              {filteredVocabulary.slice(0, 10).map((entry, index) => (
-                <TouchableOpacity
-                  key={entry.word}
-                  onPress={() => {
-                    const currentIndex = cardIndexRef.current;
-                    if (index !== currentIndex) {
-                      moveCard(index > currentIndex ? -1 : 1);
-                    }
-                  }}
-                  style={[
-                    styles.paginationDot,
-                    index === cardIndex && styles.paginationDotActive,
-                    index === 8 && styles.paginationDotNinth,
-                    index === 9 && styles.paginationDotLast,
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Show vocabulary ${index + 1}`}
-                />
-              ))}
-            </ScrollView>
-            <View style={styles.vocabularyMetaRow}>
-              <Text
-                style={[styles.vocabularyMeta, { color: theme.colors.text }]}
+                    )}
+                  </Animated.View>
+                </TouchableOpacity>
+              </Animated.View>
+              <ScrollView
+                horizontal
+                scrollEnabled={false}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.cardPagination}
+                style={styles.cardPaginationViewport}
               >
-                Alex{"  "}
-              </Text>
-              <Text
-                style={[styles.vocabularyMeta, { color: theme.colors.text }]}
-              >
-                {filteredVocabulary.length} terms
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={styles.flashcardButton}
-              onPress={() =>
-                navigation.navigate("Flashcards", {
-                  filter: selectedFilter,
-                })
-              }
-              accessibilityRole="button"
-              accessibilityLabel={`Open ${selectedFilter.toLowerCase()} flashcards`}
-            >
-              <Text style={styles.flashcardButtonText}>Flashcards</Text>
-            </TouchableOpacity>
-          </>
-        )}
-
-        <View
-          style={[
-            styles.viewSwitch,
-            {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
-            },
-          ]}
-        ></View>
-
-        <View style={styles.progressSection}>
-          <View style={styles.progressHeader}>
-            <Text style={[styles.progressTitle, { color: theme.colors.text }]}>
-              Your Progress
-            </Text>
-            <TouchableOpacity
-              style={[
-                styles.progressInfoButton,
-                { backgroundColor: theme.colors.bluePastel },
-              ]}
-              onPress={() =>
-                Alert.alert(
-                  "Your Progress",
-                  "Total words is the number of words in your vocabulary. Still learning counts words not yet mastered. Mastered counts words marked as mastered.",
-                )
-              }
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="About your progress"
-            >
-              <MaterialCommunityIcons
-                name="information-outline"
-                size={17}
-                color={theme.colors.blueDark}
-              />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.statsRow}>
-            <StatCard
-              label="Total words"
-              value={vocabulary.length}
-              color="#1CB0F6"
-              theme={theme}
-            />
-            <StatCard
-              label="Still learning"
-              value={vocabulary.length - masteredCount}
-              color="#FF9600"
-              theme={theme}
-            />
-            <StatCard
-              label="Mastered"
-              value={masteredCount}
-              color={theme.colors.primary}
-              theme={theme}
-            />
-          </View>
-        </View>
-
-        <View
-          style={[
-            styles.searchBox,
-            {
-              backgroundColor: theme.colors.surface,
-              borderColor: theme.colors.border,
-            },
-          ]}
-        >
-          <Text style={styles.searchIcon}>⌕</Text>
-          <TextInput
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholder="Search vocabulary"
-            placeholderTextColor={theme.colors.textSecondary}
-            style={[styles.searchInput, { color: theme.colors.text }]}
-          />
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={true}
-          contentContainerStyle={styles.filters}
-        >
-          {filters.map((filter) => (
-            <TouchableOpacity
-              key={filter}
-              onPress={() => setSelectedFilter(filter)}
-              style={[
-                styles.filter,
-                { borderColor: theme.colors.border },
-                selectedFilter === filter && styles.filterActive,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.filterText,
-                  { color: theme.colors.textSecondary },
-                  selectedFilter === filter && styles.filterTextActive,
-                ]}
-              >
-                {filter}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {isLoading && (
-          <Text style={[styles.message, { color: theme.colors.textSecondary }]}>
-            Loading vocabulary...
-          </Text>
-        )}
-        {errorMessage && <Text style={styles.error}>{errorMessage}</Text>}
-        {!isLoading && !errorMessage && filteredVocabulary.length === 0 && (
-          <Text style={[styles.message, { color: theme.colors.textSecondary }]}>
-            No words match this view yet.
-          </Text>
-        )}
-
-        <Text style={[styles.termsTitle, { color: theme.colors.text }]}>
-          Terms
-        </Text>
-
-        {filteredVocabulary.map((entry) => {
-          return (
-            <View
-              key={entry.word}
-              style={[
-                styles.wordCard,
-                {
-                  backgroundColor: theme.colors.surface,
-                  borderColor: theme.colors.border,
-                },
-              ]}
-            >
-              <View style={styles.wordInfo}>
-                <Text style={[styles.word, { color: theme.colors.text }]}>
-                  {entry.word}
+                {filteredVocabulary.slice(0, 10).map((entry, index) => (
+                  <TouchableOpacity
+                    key={entry.word}
+                    onPress={() => {
+                      const currentIndex = cardIndexRef.current;
+                      if (index !== currentIndex) {
+                        moveCard(index > currentIndex ? -1 : 1);
+                      }
+                    }}
+                    style={[
+                      styles.paginationDot,
+                      index === cardIndex && styles.paginationDotActive,
+                      index === 8 && styles.paginationDotNinth,
+                      index === 9 && styles.paginationDotLast,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Show vocabulary ${index + 1}`}
+                  />
+                ))}
+              </ScrollView>
+              <View style={styles.vocabularyMetaRow}>
+                <Text
+                  style={[styles.vocabularyMeta, { color: theme.colors.text }]}
+                >
+                  {firstName}
+                  {"  "}
                 </Text>
-                {(entry.pinyin || entry.definitions?.length > 0) && (
-                  <Text style={styles.pinyin}>
-                    {[
-                      entry.pinyin,
-                      Array.isArray(entry.definitions)
-                        ? entry.definitions.join(", ")
-                        : entry.definitions,
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                  </Text>
-                )}
+                <Text
+                  style={[styles.vocabularyMeta, { color: theme.colors.text }]}
+                >
+                  {filteredVocabulary.length} terms
+                </Text>
               </View>
               <TouchableOpacity
-                style={[
-                  styles.speakerButton,
-                  { backgroundColor: theme.colors.bluePastel },
-                ]}
-                onPress={() => speakVocabularyEntry(entry)}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Read ${entry.word} and its definitions aloud`}
-              >
-                <MaterialCommunityIcons
-                  name="volume-high"
-                  size={20}
-                  color={theme.colors.blueDark}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.favoriteButton}
-                onPress={() => toggleFavorite(entry.word)}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  favorites.includes(entry.word)
-                    ? `Remove ${entry.word} from favorites`
-                    : `Add ${entry.word} to favorites`
+                style={styles.flashcardButton}
+                onPress={() =>
+                  navigation.navigate("Flashcards", {
+                    filter: selectedFilter,
+                  })
                 }
-                accessibilityState={{
-                  selected: favorites.includes(entry.word),
-                }}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${selectedFilter.toLowerCase()} flashcards`}
               >
-                <MaterialCommunityIcons
-                  name={
-                    favorites.includes(entry.word) ? "star" : "star-outline"
-                  }
-                  size={22}
-                  color={favorites.includes(entry.word) ? "#F5A623" : "#94A3B8"}
-                />
+                <Text style={styles.flashcardButtonText}>Flashcards</Text>
               </TouchableOpacity>
+            </>
+          )}
+
+          <View
+            style={[
+              styles.viewSwitch,
+              {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+              },
+            ]}
+          ></View>
+
+          <View style={styles.progressSection}>
+            <View style={styles.statsRow}>
+              <StatCard
+                label="Total words"
+                value={vocabulary.length}
+                color="#1CB0F6"
+                theme={theme}
+                itemBackground={itemBackground}
+              />
+              <StatCard
+                label="Still learning"
+                value={vocabulary.length - masteredCount}
+                color="#FF9600"
+                theme={theme}
+                itemBackground={itemBackground}
+              />
+              <StatCard
+                label="Mastered"
+                value={masteredCount}
+                color={theme.colors.primary}
+                theme={theme}
+                itemBackground={itemBackground}
+              />
             </View>
-          );
-        })}
-      </ScrollView>
-    </SafeAreaView>
+          </View>
+
+          <View
+            onLayout={(event) => {
+              searchBoxYRef.current = event.nativeEvent.layout.y;
+            }}
+            style={[
+              styles.searchBox,
+              {
+                backgroundColor: isDarkMode ? "#000000" : "#FFFFFF",
+                borderColor: theme.colors.border,
+              },
+            ]}
+          >
+            <Text style={styles.searchIcon}>⌕</Text>
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onFocus={() => {
+                setIsSearchFocused(true);
+                // Centre the search bar in the area left above the keyboard.
+                setTimeout(() => {
+                  pageScrollRef.current?.scrollTo({
+                    y: Math.max(0, searchBoxYRef.current - windowHeight * 0.2),
+                    animated: true,
+                  });
+                }, 100);
+              }}
+              onBlur={() => setIsSearchFocused(false)}
+              placeholder="Search vocabulary"
+              placeholderTextColor={theme.colors.textSecondary}
+              style={[styles.searchInput, { color: theme.colors.text }]}
+            />
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={true}
+            contentContainerStyle={styles.filters}
+          >
+            {filters.map((filter) => (
+              <TouchableOpacity
+                key={filter}
+                onPress={() => setSelectedFilter(filter)}
+                style={[
+                  styles.filter,
+                  { borderColor: theme.colors.border },
+                  selectedFilter === filter && styles.filterActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.filterText,
+                    { color: theme.colors.textSecondary },
+                    selectedFilter === filter && styles.filterTextActive,
+                  ]}
+                >
+                  {filter}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {isLoading && (
+            <Text
+              style={[styles.message, { color: theme.colors.textSecondary }]}
+            >
+              Loading vocabulary...
+            </Text>
+          )}
+          {errorMessage && <Text style={styles.error}>{errorMessage}</Text>}
+          {!isLoading && !errorMessage && filteredVocabulary.length === 0 && (
+            <Text
+              style={[styles.message, { color: theme.colors.textSecondary }]}
+            >
+              No words match this view yet.
+            </Text>
+          )}
+
+          <Text style={[styles.termsTitle, { color: theme.colors.text }]}>
+            Terms
+          </Text>
+
+          {filteredVocabulary.map((entry) => {
+            return (
+              <View
+                key={entry.word}
+                style={[
+                  styles.wordCard,
+                  {
+                    backgroundColor: itemBackground,
+                    borderColor: theme.colors.border,
+                  },
+                ]}
+              >
+                <View style={styles.wordInfo}>
+                  <Text style={[styles.word, { color: theme.colors.text }]}>
+                    {entry.word}
+                  </Text>
+                  {(entry.pinyin || entry.definitions?.length > 0) && (
+                    <Text style={styles.pinyin}>
+                      {[
+                        entry.pinyin,
+                        Array.isArray(entry.definitions)
+                          ? entry.definitions.join(", ")
+                          : entry.definitions,
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    </Text>
+                  )}
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.speakerButton,
+                    { backgroundColor: theme.colors.bluePastel },
+                  ]}
+                  onPress={() => speakVocabularyEntry(entry)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Read ${entry.word} and its definitions aloud`}
+                >
+                  <MaterialCommunityIcons
+                    name="volume-high"
+                    size={20}
+                    color={theme.colors.blueDark}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.favoriteButton}
+                  onPress={() => toggleFavorite(entry.word)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    favorites.includes(entry.word)
+                      ? `Remove ${entry.word} from favorites`
+                      : `Add ${entry.word} to favorites`
+                  }
+                  accessibilityState={{
+                    selected: favorites.includes(entry.word),
+                  }}
+                >
+                  <MaterialCommunityIcons
+                    name={
+                      favorites.includes(entry.word) ? "star" : "star-outline"
+                    }
+                    size={22}
+                    color={
+                      favorites.includes(entry.word) ? "#F5A623" : "#94A3B8"
+                    }
+                  />
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+        </ScrollView>
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 
-function StatCard({ label, value, color, theme }) {
+function StatCard({ label, value, color, theme, itemBackground }) {
   return (
     <View
       style={[
         styles.statCard,
         {
-          backgroundColor: theme.colors.surface,
+          backgroundColor: itemBackground,
           borderColor: theme.colors.border,
         },
       ]}
@@ -669,6 +711,7 @@ function StatCard({ label, value, color, theme }) {
 }
 
 const styles = StyleSheet.create({
+  backgroundImage: { flex: 1 },
   container: { flex: 1 },
   content: { padding: 20, paddingBottom: 30 },
   backButton: {

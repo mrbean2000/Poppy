@@ -3,16 +3,28 @@ const { JSDOM } = require("jsdom");
 const { Readability } = require("@mozilla/readability");
 
 const passageRepository = require("../repositories/passageRepository");
+const extractParagraphs = require("../utils/extractParagraphs");
 
 const passageService = {
-  createPassage: async (url) => {
+  createPassage: async (url, userId) => {
     if (typeof url !== "string" || !url.trim()) {
       throw new Error("URL is required.");
     }
 
+    const normalizedUserId =
+      userId === undefined || userId === null ? null : Number(userId);
+    if (
+      normalizedUserId !== null &&
+      (!Number.isInteger(normalizedUserId) || normalizedUserId <= 0)
+    ) {
+      throw new Error("A valid user ID is required.");
+    }
+
+    const sourceUrl = url.trim();
+
     let parsedUrl;
     try {
-      parsedUrl = new URL(url.trim());
+      parsedUrl = new URL(sourceUrl);
     } catch {
       throw new Error("A valid URL is required.");
     }
@@ -21,8 +33,19 @@ const passageService = {
       throw new Error("Only http and https URLs are supported.");
     }
 
+    // The fragment never changes the page, so drop it when comparing URLs.
+    parsedUrl.hash = "";
+    const normalizedUrl = parsedUrl.toString();
+
+    const existingPassage =
+      await passageRepository.findBySourceUrl(normalizedUrl);
+    if (existingPassage) {
+      await passageRepository.linkUser(existingPassage.id, normalizedUserId);
+      return { passage: existingPassage, alreadyImported: true };
+    }
+
     try {
-      url = parsedUrl.toString();
+      url = normalizedUrl;
       console.log(`fetching ${url}...`);
 
       // Fetch the raw HTML string
@@ -55,11 +78,17 @@ const passageService = {
         throw new Error("❌ Readability failed to extract article content.");
       }
 
-      return await passageRepository.create({
-        title: article.title,
-        content: article.textContent,
-        imageUrl: mainImage,
-      });
+      const { passage, created } = await passageRepository.createAndLink(
+        {
+          title: article.title,
+          content: extractParagraphs(article.content, article.textContent),
+          imageUrl: mainImage,
+          sourceUrl: normalizedUrl,
+        },
+        normalizedUserId,
+      );
+
+      return { passage, alreadyImported: !created };
     } catch (error) {
       console.error("An error occurred:", error.message);
       throw error;

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {
   SafeAreaView,
   ScrollView,
@@ -8,8 +9,10 @@ import {
   TouchableOpacity,
   View,
   Image,
+  ImageBackground,
 } from "react-native";
 import {
+  getUserProfileByFirebaseUid,
   getUserSettings,
   updateUserSettings as saveUserSettings,
 } from "../util/http";
@@ -21,7 +24,28 @@ const avatar = require("../assets/images/masot/poppy_raincoat.jpeg");
 
 export default function SettingsScreen({ navigation, route }) {
   const { theme, isDarkMode, backendUserId, setDarkMode } = useTheme();
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
+  const [profile, setProfile] = useState(null);
+  const profileName = [profile?.firstName, profile?.lastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const displayName =
+    profileName ||
+    user?.displayName?.trim() ||
+    user?.email?.split("@")[0] ||
+    "Poppy learner";
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    getUserProfileByFirebaseUid(user.uid)
+      .then(setProfile)
+      .catch(() => {});
+  }, [user?.uid]);
+  // Same warm card palette as the Home screen cards.
+  const cardStyle = { backgroundColor: isDarkMode ? "#1F2937" : "#FFF4E6" };
+  const CARD_TEXT = isDarkMode ? "#FFFFFF" : "#000000";
+  const CARD_TEXT_MUTED = isDarkMode ? "#CBD5E1" : "#6B5B45";
   const { clearEpisode } = usePodcastPlayback();
   const { userSettings = {}, setSettings = () => {} } = route.params || {};
 
@@ -71,7 +95,7 @@ export default function SettingsScreen({ navigation, route }) {
     }
   }
 
-  function SettingRow({ icon, label, value, onPress, control }) {
+  function SettingRow({ icon, iconName, label, value, onPress, control }) {
     return (
       <TouchableOpacity
         style={styles.settingRow}
@@ -79,208 +103,203 @@ export default function SettingsScreen({ navigation, route }) {
         disabled={!onPress}
         activeOpacity={0.7}
       >
-        <Text style={styles.rowIcon}>{icon}</Text>
-        <Text style={[styles.rowLabel, { color: theme.colors.text }]}>
+        {iconName ? (
+          <View style={styles.rowIcon}>
+            <MaterialCommunityIcons
+              name={iconName}
+              size={20}
+              color={CARD_TEXT_MUTED}
+            />
+          </View>
+        ) : icon ? (
+          <Text style={[styles.rowIcon, { color: CARD_TEXT_MUTED }]}>
+            {icon}
+          </Text>
+        ) : null}
+        <Text
+          style={[
+            styles.rowLabel,
+            { color: CARD_TEXT },
+            !icon && !iconName && styles.rowLabelNoIcon,
+          ]}
+        >
           {label}
         </Text>
         {value && (
-          <Text
-            style={[styles.rowValue, { color: theme.colors.textSecondary }]}
-          >
+          <Text style={[styles.rowValue, { color: CARD_TEXT_MUTED }]}>
             {value}
           </Text>
         )}
         {control ? (
           <View style={styles.controlWrapper}>{control}</View>
         ) : (
-          <Text style={[styles.chevron, { color: theme.colors.textSecondary }]}>
-            ›
-          </Text>
+          <Text style={[styles.chevron, { color: CARD_TEXT_MUTED }]}>›</Text>
         )}
       </TouchableOpacity>
     );
   }
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    <ImageBackground
+      source={
+        isDarkMode
+          ? require("../assets/images/masot/backgroundimagequestion_darkmode.png")
+          : require("../assets/images/masot/backgroundimagequestion.png")
+      }
+      style={styles.backgroundImage}
+      resizeMode="cover"
     >
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: "transparent" }]}
       >
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={[styles.back, { color: theme.colors.text }]}>‹</Text>
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: theme.colors.text }]}>
-            Settings
-          </Text>
-          <View style={styles.headerSpacer} />
-        </View>
-
-        <TouchableOpacity
-          style={[
-            styles.profileCard,
-            { backgroundColor: theme.colors.surface },
-          ]}
-          activeOpacity={0.8}
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
         >
-          <Image source={avatar} style={styles.avatar} />
-          <View style={styles.profileInfo}>
-            <Text style={[styles.profileName, { color: theme.colors.text }]}>
-              Kah Yong Chua
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation.goBack()}>
+              <Text style={[styles.back, { color: theme.colors.text }]}>‹</Text>
+            </TouchableOpacity>
+            <Text style={[styles.title, { color: theme.colors.text }]}>
+              Settings
             </Text>
-            <Text
-              style={[
-                styles.profileLevel,
-                { color: theme.colors.textSecondary },
-              ]}
-            >
-              Beginner
-            </Text>
+            <View style={styles.headerSpacer} />
           </View>
-          <Text style={styles.chevron}>›</Text>
-        </TouchableOpacity>
 
-        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-          Language Settings
-        </Text>
-        <View
-          style={[
-            styles.sectionCard,
-            { backgroundColor: theme.colors.surface },
-          ]}
-        >
-          <SettingRow
-            label="Native Language"
-            onPress={() =>
-              navigation.navigate("LanguageSelection", {
-                selectedLanguage: {
-                  id: settings.nativelanguageid,
-                  name: settings.nativelanguage,
-                  flag: settings.nativeLanguageFlag,
-                },
-                onSelect: (language) => {
-                  handleLanguageChange(
-                    language.id,
-                    language.language,
-                    language.countryFlag,
-                    true,
-                  );
-                },
-              })
-            }
-            value={settings.nativeLanguageFlag + settings.nativelanguage}
-          />
-          <View
-            style={[styles.divider, { backgroundColor: theme.colors.border }]}
-          />
+          <TouchableOpacity
+            style={[styles.profileCard, cardStyle]}
+            activeOpacity={0.8}
+          >
+            <Image
+              source={user?.photoURL ? { uri: user.photoURL } : avatar}
+              style={styles.avatar}
+            />
+            <View style={styles.profileInfo}>
+              <Text style={[styles.profileName, { color: CARD_TEXT }]}>
+                {displayName}
+              </Text>
+            </View>
+          </TouchableOpacity>
 
-          {/* <SettingRow
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+            Language Settings
+          </Text>
+          <View style={[styles.sectionCard, cardStyle]}>
+            <SettingRow
+              label="Native Language"
+              onPress={() =>
+                navigation.navigate("LanguageSelection", {
+                  selectedLanguage: {
+                    id: settings.nativelanguageid,
+                    name: settings.nativelanguage,
+                    flag: settings.nativeLanguageFlag,
+                  },
+                  onSelect: (language) => {
+                    handleLanguageChange(
+                      language.id,
+                      language.language,
+                      language.countryFlag,
+                      true,
+                    );
+                  },
+                })
+              }
+              value={settings.nativeLanguageFlag + settings.nativelanguage}
+            />
+            <View style={styles.divider} />
+
+            {/* <SettingRow
             label="Target Language"
             value={
               userSettings.targetLanguageFlag + userSettings.targetlanguage
             }
           /> */}
 
-          <SettingRow
-            label="Target Language"
-            onPress={() =>
-              navigation.navigate("LanguageSelection", {
-                selectedLanguage: {
-                  id: settings.targetlanguageid,
-                  name: settings.targetlanguage,
-                  flag: settings.targetLanguageFlag,
-                },
-                onSelect: (language) => {
-                  handleLanguageChange(
-                    language.id,
-                    language.language,
-                    language.countryFlag,
-                    false,
-                  );
-                },
-              })
-            }
-            value={settings.targetLanguageFlag + settings.targetlanguage}
-          />
-        </View>
-
-        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-          App Preferences
-        </Text>
-        <View
-          style={[
-            styles.sectionCard,
-            { backgroundColor: theme.colors.surface },
-          ]}
-        >
-          <SettingRow
-            icon="◷"
-            label="Dark Mode"
-            control={
-              <View style={styles.switchContainer}>
-                <Switch
-                  value={isDarkMode}
-                  onValueChange={handleDarkModeChange}
-                  trackColor={{
-                    false: "#D1D5DB",
-                    true: theme.colors.primary,
-                  }}
-                  thumbColor={isDarkMode ? "#FFFFFF" : "#F3F4F6"}
-                  ios_backgroundColor="#D1D5DB"
-                />
-              </View>
-            }
-          />
-          <View
-            style={[styles.divider, { backgroundColor: theme.colors.border }]}
-          />
-          <SettingRow icon="♧" label="Notifications" />
-          <View
-            style={[styles.divider, { backgroundColor: theme.colors.border }]}
-          />
-          <SettingRow icon="▣" label="Data & Privacy" />
-          <View
-            style={[styles.divider, { backgroundColor: theme.colors.border }]}
-          />
-          <SettingRow icon="ⓘ" label="About" />
-        </View>
-
-        <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-          Account
-        </Text>
-        <View
-          style={[
-            styles.sectionCard,
-            { backgroundColor: theme.colors.surface },
-          ]}
-        >
-          <SettingRow
-            icon="⇥"
-            label="Sign out"
-            onPress={async () => {
-              try {
-                await clearEpisode();
-                await signOut();
-              } catch (error) {
-                setErrorMessage(error.message);
+            <SettingRow
+              label="Target Language"
+              onPress={() =>
+                navigation.navigate("LanguageSelection", {
+                  selectedLanguage: {
+                    id: settings.targetlanguageid,
+                    name: settings.targetlanguage,
+                    flag: settings.targetLanguageFlag,
+                  },
+                  onSelect: (language) => {
+                    handleLanguageChange(
+                      language.id,
+                      language.language,
+                      language.countryFlag,
+                      false,
+                    );
+                  },
+                })
               }
-            }}
-          />
-        </View>
-        {errorMessage ? (
-          <Text style={[styles.accountError, { color: theme.colors.danger }]}>
-            {errorMessage}
+              value={settings.targetLanguageFlag + settings.targetlanguage}
+            />
+          </View>
+
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+            App Preferences
           </Text>
-        ) : null}
-      </ScrollView>
-    </SafeAreaView>
+          <View style={[styles.sectionCard, cardStyle]}>
+            <SettingRow
+              icon="◷"
+              label="Dark Mode"
+              control={
+                <View style={styles.switchContainer}>
+                  <Switch
+                    value={isDarkMode}
+                    onValueChange={handleDarkModeChange}
+                    trackColor={{
+                      false: "#D1D5DB",
+                      true: theme.colors.primary,
+                    }}
+                    thumbColor={isDarkMode ? "#FFFFFF" : "#F3F4F6"}
+                    ios_backgroundColor="#D1D5DB"
+                  />
+                </View>
+              }
+            />
+            <View style={styles.divider} />
+            <SettingRow iconName="bell-outline" label="Notifications" />
+            <View style={styles.divider} />
+            <SettingRow iconName="shield-lock-outline" label="Data & Privacy" />
+            <View style={styles.divider} />
+            <SettingRow icon="ⓘ" label="About" />
+          </View>
+
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+            Account
+          </Text>
+          <View style={[styles.sectionCard, cardStyle]}>
+            <SettingRow
+              icon="⇥"
+              label="Sign out"
+              onPress={async () => {
+                try {
+                  await clearEpisode();
+                  await signOut();
+                } catch (error) {
+                  setErrorMessage(error.message);
+                }
+              }}
+            />
+          </View>
+          {errorMessage ? (
+            <Text style={[styles.accountError, { color: theme.colors.danger }]}>
+              {errorMessage}
+            </Text>
+          ) : null}
+        </ScrollView>
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
+  backgroundImage: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     backgroundColor: "#F7F7F7",
@@ -301,7 +320,7 @@ const styles = StyleSheet.create({
     color: "#172033",
   },
   title: {
-    fontSize: 22,
+    fontSize: 26,
     fontWeight: "900",
     color: "#172033",
   },
@@ -326,18 +345,19 @@ const styles = StyleSheet.create({
     marginLeft: 13,
   },
   profileName: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "900",
     color: "#172033",
   },
   profileLevel: {
     marginTop: 5,
-    fontSize: 13,
+    fontSize: 14,
+    fontWeight: "600",
     color: "#6B7280",
   },
   sectionTitle: {
     marginBottom: 8,
-    fontSize: 14,
+    fontSize: 20,
     fontWeight: "900",
     color: "#172033",
   },
@@ -362,12 +382,16 @@ const styles = StyleSheet.create({
   rowLabel: {
     flex: 1,
     marginLeft: 10,
-    fontSize: 14,
+    fontSize: 18,
+    fontWeight: "600",
     color: "#172033",
+  },
+  rowLabelNoIcon: {
+    marginLeft: 0,
   },
   rowValue: {
     marginRight: 9,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "700",
     color: "#4B5563",
   },
@@ -387,8 +411,8 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    marginLeft: 51,
-    backgroundColor: "#EEF1F4",
+    marginLeft: 14,
+    backgroundColor: "rgba(128, 128, 128, 0.3)",
   },
   accountError: { marginBottom: 16, fontSize: 13, lineHeight: 19 },
 });

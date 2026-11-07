@@ -1,5 +1,7 @@
 import {
   Alert,
+  Animated,
+  ImageBackground,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -10,17 +12,81 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import { useTheme } from "../theme/ThemeContext";
 import { createPassageFromText } from "../util/http";
 
 export default function ImportYourselfScreen({ navigation }) {
-  const { theme } = useTheme();
+  const { theme, isDarkMode, backendUserId } = useTheme();
   const [title, setTitle] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [passage, setPassage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const titleInputRef = useRef(null);
+  const contentOpacity = useRef(new Animated.Value(0)).current;
+  const contentOffset = useRef(new Animated.Value(20)).current;
+  const backPressScale = useRef(new Animated.Value(1)).current;
+
+  useFocusEffect(
+    useCallback(() => {
+      contentOpacity.setValue(0);
+      contentOffset.setValue(20);
+
+      const animation = Animated.parallel([
+        Animated.timing(contentOpacity, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.timing(contentOffset, {
+          toValue: 0,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+      ]);
+
+      animation.start();
+
+      return () => animation.stop();
+    }, [contentOffset, contentOpacity]),
+  );
+
+  function animateBackPressIn() {
+    Animated.spring(backPressScale, {
+      toValue: 0.86,
+      speed: 28,
+      bounciness: 8,
+      useNativeDriver: true,
+    }).start();
+  }
+
+  function animateBackPressOut() {
+    Animated.spring(backPressScale, {
+      toValue: 1,
+      speed: 24,
+      bounciness: 10,
+      useNativeDriver: true,
+    }).start();
+  }
+
+  function goBack() {
+    animateBackPressIn();
+    setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(contentOpacity, {
+          toValue: 0,
+          duration: 170,
+          useNativeDriver: true,
+        }),
+        Animated.timing(contentOffset, {
+          toValue: -20,
+          duration: 170,
+          useNativeDriver: true,
+        }),
+      ]).start(() => navigation.goBack());
+    }, 110);
+  }
 
   async function handleImport() {
     const trimmedTitle = title.trim();
@@ -43,6 +109,7 @@ export default function ImportYourselfScreen({ navigation }) {
         title: trimmedTitle,
         imageUrl: trimmedImageUrl,
         passage: trimmedPassage,
+        userId: backendUserId,
       });
       const importedPassage = createdPassage.passage;
       const passageId = createdPassage.id;
@@ -66,21 +133,46 @@ export default function ImportYourselfScreen({ navigation }) {
   }
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    <ImageBackground
+      source={
+        isDarkMode
+          ? require("../assets/images/masot/backgroundimagequestion_darkmode.png")
+          : require("../assets/images/masot/backgroundimagequestion.png")
+      }
+      style={styles.container}
+      resizeMode="cover"
     >
+    <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
+        <Animated.View
+          style={[
+            styles.flex,
+            {
+              opacity: contentOpacity,
+              transform: [{ translateX: contentOffset }],
+            },
+          ]}
+        >
         <ScrollView contentContainerStyle={styles.content}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
+          <Animated.View
+            style={{
+              alignSelf: "flex-start",
+              transform: [{ scale: backPressScale }],
+            }}
           >
-            <Text style={[styles.back, { color: theme.colors.text }]}>‹</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              onPress={goBack}
+              onPressIn={animateBackPressIn}
+              onPressOut={animateBackPressOut}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Text style={[styles.back, { color: theme.colors.text }]}>‹</Text>
+            </TouchableOpacity>
+          </Animated.View>
           <Text style={[styles.title, { color: theme.colors.text }]}>
             Import Yourself
           </Text>
@@ -151,8 +243,10 @@ export default function ImportYourselfScreen({ navigation }) {
             </TouchableOpacity>
           </View>
         </ScrollView>
+        </Animated.View>
       </KeyboardAvoidingView>
     </SafeAreaView>
+    </ImageBackground>
   );
 }
 

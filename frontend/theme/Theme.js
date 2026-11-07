@@ -2,9 +2,9 @@ export const lightTheme = {
   colors: {
     background: "#F7F7F7",
     surface: "#FFFFFF",
-    primary: "#78C800",
-    primaryDark: "#58A600",
-    primaryText: "#FFFFFF",
+    primary: "#F6C945",
+    primaryDark: "#F6C945",
+    primaryText: "#1E2925",
 
     blue: "#1CB0F6",
     blueDark: "#1295D8",

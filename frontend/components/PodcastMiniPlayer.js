@@ -9,7 +9,7 @@ import { useTheme } from "../theme/ThemeContext";
 export default function PodcastMiniPlayer() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const { theme } = useTheme();
+  const { theme, isDarkMode } = useTheme();
   const { player, status, currentPodcast, clearEpisode } = usePodcastPlayback();
 
   if (!currentPodcast) return null;
@@ -38,7 +38,7 @@ export default function PodcastMiniPlayer() {
         styles.container,
         {
           bottom: Math.max(insets.bottom, 8),
-          backgroundColor: theme.colors.surface,
+          backgroundColor: isDarkMode ? "#000000" : "#FFFFFF",
           borderColor: theme.colors.border,
         },
       ]}

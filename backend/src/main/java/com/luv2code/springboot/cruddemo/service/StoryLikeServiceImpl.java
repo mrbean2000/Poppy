@@ -7,6 +7,10 @@ import com.luv2code.springboot.cruddemo.entity.StoryLike;
 import com.luv2code.springboot.cruddemo.exception.ResourceNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.time.LocalDateTime;
 
 @Service
 public class StoryLikeServiceImpl implements StoryLikeService {
@@ -19,11 +23,15 @@ public class StoryLikeServiceImpl implements StoryLikeService {
     }
 
     @Override
-    public StoryLike getByPassageId(int passageId){
-        StoryLike storyLike = storyLikeRepository.findByPostId(passageId);
+    public StoryLike getByUserAndPassage(int userId, int passageId){
+        StoryLike storyLike = storyLikeRepository.findByUserIdAndPostId(userId, passageId);
 
         if(storyLike == null){
-            throw new ResourceNotFoundException("Like not found for passage id: " + passageId);
+            StoryLike notLiked = new StoryLike();
+            notLiked.setUserId(userId);
+            notLiked.setPostId(passageId);
+            notLiked.setLike(false);
+            return notLiked;
         }
 
         return storyLike;
@@ -39,13 +47,22 @@ public class StoryLikeServiceImpl implements StoryLikeService {
     @Override
     public StoryLike update(StoryLikeDto storyLikeDto){
 
-        int storyLikeId = storyLikeDto.getPostId();
-        StoryLike storyLike = storyLikeRepository.findByPostId(storyLikeId);
+        if(storyLikeDto.getUserId() == null){
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "userId is required");
+        }
+
+        int userId = storyLikeDto.getUserId();
+        int postId = storyLikeDto.getPostId();
+
+        StoryLike storyLike = storyLikeRepository.findByUserIdAndPostId(userId, postId);
         if(storyLike == null){
-            throw new ResourceNotFoundException("Like not found for passage id: " + storyLikeId);
+            storyLike = new StoryLike();
+            storyLike.setUserId(userId);
+            storyLike.setPostId(postId);
         }
 
         storyLike.setLike(storyLikeDto.getLike());
+        storyLike.setUpdatedAt(LocalDateTime.now());
 
         return storyLikeRepository.save(storyLike);
 

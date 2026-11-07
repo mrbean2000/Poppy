@@ -1,7 +1,16 @@
 package com.luv2code.springboot.cruddemo.dto;
 
 public class StoryLikeDto {
+    private Integer userId;
     private int postId;
+
+    public Integer getUserId() {
+        return userId;
+    }
+
+    public void setUserId(Integer userId) {
+        this.userId = userId;
+    }
 
     public boolean getLike() {
         return like;

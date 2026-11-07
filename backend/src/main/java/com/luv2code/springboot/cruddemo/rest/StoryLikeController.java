@@ -23,9 +23,9 @@ public class StoryLikeController {
         jsonMapper = theJsonMapper;
     }
 
-    @GetMapping("/story-like/{passageId}")
-    public ResponseEntity<StoryLike> getByPassageId(@PathVariable int passageId){
-        StoryLike storyLike = storyLikeService.getByPassageId(passageId);
+    @GetMapping("/story-like/user/{userId}/passage/{passageId}")
+    public ResponseEntity<StoryLike> getByUserAndPassage(@PathVariable int userId, @PathVariable int passageId){
+        StoryLike storyLike = storyLikeService.getByUserAndPassage(userId, passageId);
         return ResponseEntity.ok(storyLike);
     }
 

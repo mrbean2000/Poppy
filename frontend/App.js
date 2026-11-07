@@ -193,7 +193,7 @@ function AppNavigation() {
             <Stack.Screen
               name="Vocabulary"
               component={MyVocabularyScreen}
-              options={{ headerShown: false, gestureEnabled: false }}
+              options={{ headerShown: false, gestureEnabled: true }}
             />
             <Stack.Screen
               name="VocabularyDetail"
@@ -218,12 +218,20 @@ function AppNavigation() {
             <Stack.Screen
               name="ImportUrl"
               component={ImportUrlScreen}
-              options={{ headerShown: false }}
+              options={{
+                headerShown: false,
+                animation: "none",
+                gestureEnabled: false,
+              }}
             />
             <Stack.Screen
               name="ImportYourself"
               component={ImportYourselfScreen}
-              options={{ headerShown: false }}
+              options={{
+                headerShown: false,
+                animation: "none",
+                gestureEnabled: false,
+              }}
             />
             <Stack.Screen
               name="ImportCamera"

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
+  Animated,
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
@@ -7,9 +8,12 @@ import {
   View,
   Text,
   Image,
+  ImageBackground,
   Switch,
 } from "react-native";
 import * as Speech from "expo-speech";
+import { setAudioModeAsync } from "expo-audio";
+import * as Haptics from "expo-haptics";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import AudioController from "../components/AudioController";
 import VocabularyModal from "../components/VocabularyModal";
@@ -19,37 +23,150 @@ import {
   getSegmentedPassageWithPinyinById,
   getStoryLike,
   updateStoryLike,
+  updateLastReadPassage,
+  recordPassageCompletion,
 } from "../util/http";
 
+// Memoized so opening the modal doesn't re-render every word of the passage.
+const WordToken = memo(function WordToken({
+  entry,
+  isSpoken,
+  showPinyin,
+  isSegmented,
+  textColor,
+  onWordPress,
+  index,
+  onLayoutY,
+}) {
+  return (
+    <TouchableOpacity
+      onLayout={(event) => onLayoutY(index, event.nativeEvent.layout.y)}
+      style={[
+        styles.wordWithPinyin,
+        entry.statusLevel && styles[`wordStatus${entry.statusLevel}`],
+        isSpoken && styles.spokenWord,
+      ]}
+      onPress={() => onWordPress(entry.word)}
+      disabled={!isSegmented}
+    >
+      {showPinyin && <Text style={styles.pinyinText}>{entry.pinyin}</Text>}
+      <Text style={[styles.normalText, { color: textColor }]}>
+        {entry.word}
+      </Text>
+    </TouchableOpacity>
+  );
+});
+
 export default function ReaderScreen({ navigation, route }) {
-  const { theme } = useTheme();
+  const { theme, isDarkMode, backendUserId } = useTheme();
   const [selectedWord, setSelectedWord] = useState(null);
   const [passage, setPassage] = useState(null);
   const [segmentedPassage, setSegmentedPassage] = useState(null);
   const [isSegmented, setIsSegmented] = useState(false);
   const [showPinyin, setShowPinyin] = useState(false);
-  const { id, title, imageUrl, userId = 1 } = route.params;
+  const { id, title, imageUrl, userId: routeUserId = 1 } = route.params;
+  const userId = backendUserId ?? routeUserId;
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
   const [isLiked, setIsLiked] = useState(false);
   const [isUpdatingLike, setIsUpdatingLike] = useState(false);
   const [readingProgress, setReadingProgress] = useState(0);
+  const [isTitleExpanded, setIsTitleExpanded] = useState(false);
   const [paragraphLayout, setParagraphLayout] = useState(null);
   const [scrollViewHeight, setScrollViewHeight] = useState(0);
   const [isReadingAloud, setIsReadingAloud] = useState(false);
-  const [spokenWordIndex, setSpokenWordIndex] = useState(null);
+  const [spokenSentenceIndex, setSpokenSentenceIndex] = useState(null);
+  // Non-whitespace character position of the word being spoken; null until the
+  // platform reports word boundaries (then sentence highlighting is the fallback).
+  const [spokenCharPos, setSpokenCharPos] = useState(null);
   const [speechRate, setSpeechRate] = useState(1);
   const [isAudioControllerVisible, setIsAudioControllerVisible] =
     useState(false);
+  const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
   const speechSession = useRef(0);
+  const scrollViewRef = useRef(null);
+  const wordLayoutY = useRef({});
+  const lastScrolledWord = useRef(null);
 
-  function openVocabularyModal(word) {
+  const handleWordLayout = useCallback((index, y) => {
+    wordLayoutY.current[index] = y;
+  }, []);
+
+  useEffect(() => {
+    if (!isReadingAloud) lastScrolledWord.current = null;
+    if (!isReadingAloud || !isAutoScrollEnabled || !segmentedPassage) return;
+    if (!paragraphLayout) return;
+
+    let spokenIndex = -1;
+    if (spokenCharPos !== null) {
+      let consumed = 0;
+      spokenIndex = segmentedPassage.findIndex((entry) => {
+        consumed += entry.word.replace(/\s/g, "").length;
+        return consumed > spokenCharPos;
+      });
+    } else if (spokenSentenceIndex !== null) {
+      spokenIndex = getWordSentenceIndexes().indexOf(spokenSentenceIndex);
+    }
+
+    const wordY = wordLayoutY.current[spokenIndex];
+    if (wordY === undefined || lastScrolledWord.current === spokenIndex) return;
+    lastScrolledWord.current = spokenIndex;
+
+    // Keep the spoken word about a third of the way down the viewport.
+    scrollViewRef.current?.scrollTo({
+      y: Math.max(0, paragraphLayout.y + wordY - scrollViewHeight / 3),
+      animated: true,
+    });
+  }, [spokenCharPos, spokenSentenceIndex, isReadingAloud, isAutoScrollEnabled]);
+  const speechVoice = useRef(undefined);
+
+  useEffect(() => {
+    Speech.getAvailableVoicesAsync()
+      .then((voices) => {
+        const chineseVoices = voices.filter((voice) =>
+          /^zh[-_]cn$/i.test(voice.language),
+        );
+        // Enhanced/Premium voices sound far more natural than the default one.
+        const rank = (voice) =>
+          voice.quality === Speech.VoiceQuality.Enhanced ? 1 : 0;
+        chineseVoices.sort((a, b) => rank(b) - rank(a));
+        speechVoice.current = chineseVoices[0]?.identifier;
+      })
+      .catch(() => {});
+  }, []);
+  const passageRef = useRef("");
+  const modeAnim = useRef(new Animated.Value(0)).current;
+  const [modeLayouts, setModeLayouts] = useState({});
+
+  useEffect(() => {
+    Animated.spring(modeAnim, {
+      toValue: isSegmented ? 1 : 0,
+      useNativeDriver: false,
+      friction: 8,
+      tension: 80,
+    }).start();
+  }, [isSegmented, modeAnim]);
+
+  const openVocabularyModal = useCallback((word) => {
     setSelectedWord(word);
-  }
+  }, []);
 
-  function closeVocabularyModal() {
+  const closeVocabularyModal = useCallback(() => {
     setSelectedWord(null);
-  }
+  }, []);
+
+  const handleWordLookedUp = useCallback((word, statusLevel) => {
+    if (!statusLevel) return;
+    setSegmentedPassage((current) =>
+      current?.some((entry) => entry.word === word && !entry.statusLevel)
+        ? current.map((entry) =>
+            entry.word === word && !entry.statusLevel
+              ? { ...entry, statusLevel }
+              : entry,
+          )
+        : current,
+    );
+  }, []);
 
   function handleScroll(event) {
     if (!paragraphLayout || !scrollViewHeight) return;
@@ -103,6 +220,7 @@ export default function ReaderScreen({ navigation, route }) {
   }
 
   function handlePinyinToggle(value) {
+    Haptics.selectionAsync().catch(() => {});
     setShowPinyin(value);
 
     if (value) {
@@ -110,33 +228,123 @@ export default function ReaderScreen({ navigation, route }) {
     }
   }
 
-  function speakWordAt(words, index, sessionId, rate = speechRate) {
-    if (sessionId !== speechSession.current || index >= words.length) {
+  function splitIntoSentences(text) {
+    return (text?.match(/[^。！？!?\n]+[。！？!?]*/g) || []).filter((sentence) =>
+      sentence.trim(),
+    );
+  }
+
+  async function getSentences() {
+    let text = passage;
+    if (!text) {
+      try {
+        text = (await getPassageById(id)).passage;
+        setPassage(text);
+      } catch (error) {
+        setErrorMessage(error.message);
+        return [];
+      }
+    }
+    passageRef.current = text;
+    return getSentenceRanges(text);
+  }
+
+  function getSentenceRanges(text) {
+    return [...(text || "").matchAll(/[^。！？!?\n]+[。！？!?]*/g)]
+      .filter((match) => match[0].trim())
+      .map((match) => ({ start: match.index, end: match.index + match[0].length }));
+  }
+
+  // The passage is spoken as one continuous utterance so there are no gaps
+  // between sentences. It is only chunked when it exceeds the platform limit.
+  function speakSentenceAt(sentences, index, sessionId, rate = speechRate) {
+    if (sessionId !== speechSession.current || index >= sentences.length) {
       if (sessionId === speechSession.current) {
         setIsReadingAloud(false);
-        setSpokenWordIndex(null);
+        setSpokenSentenceIndex(null);
+        setSpokenCharPos(null);
       }
       return;
     }
 
-    setSpokenWordIndex(index);
-    Speech.speak(words[index].word, {
+    const maxChunkLength = 3900;
+    const chunkStart = sentences[index].start;
+    let endIndex = index;
+    while (
+      endIndex + 1 < sentences.length &&
+      sentences[endIndex + 1].end - chunkStart <= maxChunkLength
+    ) {
+      endIndex += 1;
+    }
+    const chunkText = passageRef.current.slice(
+      chunkStart,
+      sentences[endIndex].end,
+    );
+
+    setSpokenSentenceIndex(index);
+    setSpokenCharPos(null);
+    Speech.speak(chunkText, {
       language: "zh-CN",
+      voice: speechVoice.current,
+      pitch: 1,
       rate,
-      onDone: () => speakWordAt(words, index + 1, sessionId),
+      // Boundary events are only emitted on some platforms (iOS).
+      onBoundary: ({ charIndex }) => {
+        if (sessionId !== speechSession.current) return;
+        const position = chunkStart + charIndex;
+        setSpokenCharPos(
+          passageRef.current.slice(0, position).replace(/\s/g, "").length,
+        );
+        let current = index;
+        while (
+          current < endIndex &&
+          sentences[current + 1].start <= position
+        ) {
+          current += 1;
+        }
+        setSpokenSentenceIndex(current);
+      },
+      onDone: () => speakSentenceAt(sentences, endIndex + 1, sessionId, rate),
       onStopped: () => {
         if (sessionId === speechSession.current) {
           setIsReadingAloud(false);
-          setSpokenWordIndex(null);
         }
       },
       onError: () => {
         if (sessionId === speechSession.current) {
           setIsReadingAloud(false);
-          setSpokenWordIndex(null);
+          setSpokenSentenceIndex(null);
+          setSpokenCharPos(null);
           setErrorMessage("Unable to read this passage aloud.");
         }
       },
+    });
+  }
+
+  // Maps each segmented word to the sentence containing it by counting
+  // non-whitespace characters, so the spoken sentence can be highlighted.
+  function getWordSentenceIndexes() {
+    if (!segmentedPassage || !passage) return [];
+
+    const sentenceEnds = [];
+    let total = 0;
+    splitIntoSentences(passage).forEach((sentence) => {
+      total += sentence.replace(/\s/g, "").length;
+      sentenceEnds.push(total);
+    });
+
+    let consumed = 0;
+    let sentenceIndex = 0;
+    return segmentedPassage.map((entry) => {
+      const index = sentenceIndex;
+      consumed += entry.word.replace(/\s/g, "").length;
+      while (
+        sentenceIndex < sentenceEnds.length - 1 &&
+        consumed >= sentenceEnds[sentenceIndex]
+      ) {
+        sentenceIndex += 1;
+      }
+      return index;
     });
   }
 
@@ -146,19 +354,26 @@ export default function ReaderScreen({ navigation, route }) {
       return;
     }
 
-    const words = segmentedPassage || (await fetchSegementedPassageById(id));
-    if (!words?.length) return;
+    const sentences = await getSentences();
+    if (!sentences.length) return;
+
+    setIsSegmented(true);
+    fetchSegementedPassageById(id);
+
+    // iOS mutes speech when the silent switch is on unless this is enabled
+    await setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
 
     speechSession.current += 1;
     setIsReadingAloud(true);
-    speakWordAt(words, spokenWordIndex ?? 0, speechSession.current);
+    speakSentenceAt(sentences, spokenSentenceIndex ?? 0, speechSession.current);
   }
 
   async function stopReadingAloud() {
     speechSession.current += 1;
     await Speech.stop();
     setIsReadingAloud(false);
-    setSpokenWordIndex(null);
+    setSpokenSentenceIndex(null);
+    setSpokenCharPos(null);
   }
 
   async function pauseReadingAloud() {
@@ -168,34 +383,36 @@ export default function ReaderScreen({ navigation, route }) {
   }
 
   async function seekSpeech(offset) {
-    const words = segmentedPassage || (await fetchSegementedPassageById(id));
-    if (!words?.length) return;
+    const sentences = await getSentences();
+    if (!sentences.length) return;
 
-    const currentIndex = spokenWordIndex ?? 0;
+    const currentIndex = spokenSentenceIndex ?? 0;
     const nextIndex = Math.max(
       0,
-      Math.min(words.length - 1, currentIndex + offset),
+      Math.min(sentences.length - 1, currentIndex + offset),
     );
 
     speechSession.current += 1;
     await Speech.stop();
     setIsReadingAloud(true);
-    speakWordAt(words, nextIndex, speechSession.current);
+    speakSentenceAt(sentences, nextIndex, speechSession.current);
   }
 
   function getSpeechProgress() {
-    if (!segmentedPassage?.length || spokenWordIndex === null) return 0;
+    const count = splitIntoSentences(passage).length;
+    if (!count || spokenSentenceIndex === null) return 0;
 
-    return ((spokenWordIndex + 1) / segmentedPassage.length) * 100;
+    return ((spokenSentenceIndex + 1) / count) * 100;
   }
 
   function getSpeechTime() {
-    if (!segmentedPassage?.length || spokenWordIndex === null) {
+    const count = splitIntoSentences(passage).length;
+    if (!count || spokenSentenceIndex === null) {
       return { elapsed: "0:00", remaining: "-0:00" };
     }
 
     const elapsedSeconds = Math.round(
-      ((spokenWordIndex + 1) / segmentedPassage.length) * 600,
+      ((spokenSentenceIndex + 1) / count) * 600,
     );
     const remainingSeconds = Math.max(0, 600 - elapsedSeconds);
 
@@ -209,15 +426,14 @@ export default function ReaderScreen({ navigation, route }) {
   }
 
   function handleSpeechProgressPress(event) {
-    if (!segmentedPassage?.length) return;
+    const count = splitIntoSentences(passage).length;
+    if (!count) return;
 
     const progressWidth = event.nativeEvent.locationX;
     const progressTarget = Math.max(0, Math.min(1, progressWidth));
-    const targetIndex = Math.round(
-      progressTarget * (segmentedPassage.length - 1),
-    );
+    const targetIndex = Math.round(progressTarget * (count - 1));
 
-    seekSpeech(targetIndex - (spokenWordIndex ?? 0));
+    seekSpeech(targetIndex - (spokenSentenceIndex ?? 0));
   }
 
   function handleSpeechPlayPress() {
@@ -239,21 +455,22 @@ export default function ReaderScreen({ navigation, route }) {
   async function handleSpeechRateSelect(nextRate) {
     setSpeechRate(nextRate);
 
-    if (!isReadingAloud || !segmentedPassage?.length) return;
+    if (!isReadingAloud || !passage) return;
 
+    const sentences = getSentenceRanges(passage);
     speechSession.current += 1;
     await Speech.stop();
-    speakWordAt(
-      segmentedPassage,
-      spokenWordIndex ?? 0,
+    speakSentenceAt(
+      sentences,
+      spokenSentenceIndex ?? 0,
       speechSession.current,
       nextRate,
     );
   }
 
-  async function fetchStoryLike(postId) {
+  async function fetchStoryLike(likeUserId, postId) {
     try {
-      const likeData = await getStoryLike(postId);
+      const likeData = await getStoryLike(likeUserId, postId);
       setIsLiked(Boolean(likeData.like));
     } catch (error) {
       setErrorMessage(error.message);
@@ -262,12 +479,13 @@ export default function ReaderScreen({ navigation, route }) {
 
   async function handleLikePress() {
     const nextLike = !isLiked;
+    const likeUserId = backendUserId ?? userId;
 
     setIsLiked(nextLike);
 
     try {
       setIsUpdatingLike(true);
-      const likeData = await updateStoryLike(id, nextLike);
+      const likeData = await updateStoryLike(likeUserId, id, nextLike);
       setIsLiked(Boolean(likeData.like));
     } catch (error) {
       setIsLiked(!nextLike);
@@ -279,8 +497,37 @@ export default function ReaderScreen({ navigation, route }) {
 
   useEffect(() => {
     fetchPassageById(id);
-    fetchStoryLike(id);
   }, [id]);
+
+  useEffect(() => {
+    const likeUserId = backendUserId ?? userId;
+    if (!likeUserId) return;
+    fetchStoryLike(likeUserId, id);
+  }, [id, backendUserId, userId]);
+
+  useEffect(() => {
+    const progressUserId = backendUserId ?? userId;
+    if (!progressUserId) return;
+    updateLastReadPassage(progressUserId, id).catch(() => {});
+  }, [id, backendUserId, userId]);
+
+  // One completion per visit; reopening the passage allows another.
+  const completionRecorded = useRef(false);
+
+  useEffect(() => {
+    completionRecorded.current = false;
+  }, [id]);
+
+  useEffect(() => {
+    const completionUserId = backendUserId ?? userId;
+    if (readingProgress < 1 || !passage || !completionUserId) return;
+    if (completionRecorded.current) return;
+
+    completionRecorded.current = true;
+    recordPassageCompletion(completionUserId, id).catch(() => {
+      completionRecorded.current = false;
+    });
+  }, [readingProgress, passage, id, backendUserId, userId]);
 
   useEffect(() => {
     return () => {
@@ -290,204 +537,333 @@ export default function ReaderScreen({ navigation, route }) {
   }, []);
 
   return (
-    <SafeAreaView
-      style={[
-        selectedWord === null ? styles.container : styles.containerGrey,
-        { backgroundColor: theme.colors.background },
-      ]}
+    <ImageBackground
+      source={
+        isDarkMode
+          ? require("../assets/images/masot/backgroundimagequestion_darkmode.png")
+          : require("../assets/images/masot/backgroundimagequestion.png")
+      }
+      style={styles.backgroundImage}
+      resizeMode="cover"
     >
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={[styles.back, { color: theme.colors.text }]}>‹</Text>
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: theme.colors.text }]}>
-          {title?.length > 23 ? `${title.slice(0, 23)}...` : title}
-        </Text>
-        <TouchableOpacity
-          onPress={handleLikePress}
-          disabled={isUpdatingLike}
-          accessibilityRole="button"
-          accessibilityLabel={isLiked ? "Unlike story" : "Like story"}
-        >
-          <Text style={[styles.bookmark, isLiked && styles.bookmarkLiked]}>
-            {isLiked ? "♥" : "♡"}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.progressContainer}>
-        <View style={styles.progressTrack}>
-          <View
-            style={[
-              styles.progressFill,
-              {
-                width: `${readingProgress * 100}%`,
-                backgroundColor: theme.colors.primary,
-              },
-            ]}
-          />
-        </View>
-        <Text style={styles.progressText}>
-          {Math.round(readingProgress * 100)}%
-        </Text>
-        <TouchableOpacity
-          style={styles.audioToggleButton}
-          onPress={() => setIsAudioControllerVisible((isVisible) => !isVisible)}
-          accessibilityRole="button"
-          accessibilityLabel={
-            isAudioControllerVisible
-              ? "Hide reading controls"
-              : "Show reading controls"
-          }
-          accessibilityState={{ expanded: isAudioControllerVisible }}
-        >
-          <MaterialCommunityIcons
-            name="headphones"
-            size={20}
-            color={isAudioControllerVisible ? "#1766B1" : "#64748B"}
-          />
-        </TouchableOpacity>
-      </View>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        alwaysBounceVertical={true}
-        onLayout={(event) =>
-          setScrollViewHeight(event.nativeEvent.layout.height)
-        }
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
-        showsVerticalScrollIndicator={false}
+      <SafeAreaView
+        style={[
+          selectedWord === null ? styles.container : styles.containerGrey,
+          { backgroundColor: "transparent" },
+        ]}
       >
-        <View style={styles.heroImage}>
-          <Image
-            source={
-              imageUrl
-                ? { uri: imageUrl }
-                : require("../assets/images/masot/poppy_raincoat.jpeg")
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
+            <Text style={[styles.back, { color: theme.colors.text }]}>‹</Text>
+          </TouchableOpacity>
+          <Text
+            style={[styles.title, { color: theme.colors.text }]}
+            onPress={
+              title?.length > 16
+                ? () => setIsTitleExpanded((expanded) => !expanded)
+                : undefined
             }
-            style={imageUrl ? styles.storyImage : styles.avatarImage}
-          />
+            accessibilityRole={title?.length > 16 ? "button" : undefined}
+            accessibilityLabel={title}
+          >
+            {title?.length > 16 && !isTitleExpanded
+              ? `${title.slice(0, 16)}...`
+              : title}
+          </Text>
+          <TouchableOpacity
+            style={styles.likeButton}
+            onPress={handleLikePress}
+            disabled={isUpdatingLike}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={isLiked ? "Unlike story" : "Like story"}
+          >
+            <Text
+              style={[
+                styles.bookmark,
+                { color: theme.colors.text },
+                isLiked && styles.bookmarkLiked,
+              ]}
+            >
+              {isLiked ? "♥" : "♡"}
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.textModeControl}>
-          <View style={styles.modeButtonsGroup}>
-            <TouchableOpacity
+        <View style={styles.progressContainer}>
+          <View style={styles.progressTrack}>
+            <View
               style={[
-                styles.textModeButton,
-                !isSegmented && styles.textModeButtonActive,
+                styles.progressFill,
+                {
+                  width: `${readingProgress * 100}%`,
+                  backgroundColor: theme.colors.primary,
+                },
               ]}
-              onPress={() => {
-                fetchPassageById(id);
-                setIsSegmented(false);
-              }}
-            >
-              <Text
-                style={[
-                  styles.textModeLabel,
-                  !isSegmented && styles.textModeLabelActive,
-                ]}
-              >
-                Original
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.textModeButton,
-                isSegmented && styles.textModeButtonActive,
-              ]}
-              onPress={() => {
-                fetchSegementedPassageById(id);
-                setIsSegmented(true);
-              }}
-              // onPress={() => segmentedPassage && setIsSegmented(true)}
-              disabled={isSegmented}
-            >
-              <Text
-                style={[
-                  styles.textModeLabel,
-                  isSegmented && styles.textModeLabelActive,
-                  !segmentedPassage && styles.textModeLabelDisabled,
-                ]}
-              >
-                Learning Mode
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.pinyinToggle}>
-            <Text style={styles.textModeLabelPinyin}>Pinyin</Text>
-            <Switch
-              value={showPinyin}
-              onValueChange={handlePinyinToggle}
-              trackColor={{
-                false: theme.colors.border,
-                true: theme.colors.greenPastel,
-              }}
-              thumbColor={
-                showPinyin ? theme.colors.primary : theme.colors.textSecondary
-              }
             />
           </View>
+          <Text style={styles.progressText}>
+            {Math.round(readingProgress * 100)}%
+          </Text>
+          <TouchableOpacity
+            style={styles.audioToggleButton}
+            onPress={() =>
+              setIsAudioControllerVisible((isVisible) => !isVisible)
+            }
+            accessibilityRole="button"
+            accessibilityLabel={
+              isAudioControllerVisible
+                ? "Hide reading controls"
+                : "Show reading controls"
+            }
+            accessibilityState={{ expanded: isAudioControllerVisible }}
+          >
+            <MaterialCommunityIcons
+              name="headphones"
+              size={20}
+              color={isAudioControllerVisible ? "#1766B1" : "#64748B"}
+            />
+          </TouchableOpacity>
         </View>
-
-        <View
-          style={styles.paragraphContainer}
-          onLayout={(event) => setParagraphLayout(event.nativeEvent.layout)}
+        <ScrollView
+          ref={scrollViewRef}
+          contentContainerStyle={styles.content}
+          alwaysBounceVertical={true}
+          onLayout={(event) =>
+            setScrollViewHeight(event.nativeEvent.layout.height)
+          }
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={false}
         >
-          <View style={styles.wordRow}>
-            {(isSegmented || showPinyin || isReadingAloud) &&
-            segmentedPassage ? (
-              segmentedPassage.map((entry, index) => (
-                <TouchableOpacity
-                  key={`${entry.word}-${index}`}
-                  style={[
-                    styles.wordWithPinyin,
-                    entry.statusLevel &&
-                      styles[`wordStatus${entry.statusLevel}`],
-                    spokenWordIndex === index && styles.spokenWord,
-                  ]}
-                  onPress={() => openVocabularyModal(entry.word)}
-                  disabled={!isSegmented}
-                >
-                  {showPinyin && (
-                    <Text style={styles.pinyinText}>{entry.pinyin}</Text>
-                  )}
-                  <Text
-                    style={[styles.normalText, { color: theme.colors.text }]}
-                  >
-                    {entry.word}
-                  </Text>
-                </TouchableOpacity>
-              ))
-            ) : (
-              <Text style={[styles.normalText, { color: theme.colors.text }]}>
-                {passage || "Loading..."}
-              </Text>
-            )}
+          <View style={styles.heroImage}>
+            <Image
+              source={
+                imageUrl
+                  ? { uri: imageUrl }
+                  : require("../assets/images/masot/poppy_raincoat.jpeg")
+              }
+              style={imageUrl ? styles.storyImage : styles.avatarImage}
+            />
           </View>
-        </View>
-      </ScrollView>
-      {isAudioControllerVisible && (
-        <AudioController
-          isReadingAloud={isReadingAloud}
-          speechRate={speechRate}
-          theme={theme}
-          onSkip={handleSpeechSkip}
-          onPlayPress={handleSpeechPlayPress}
-          onRatePress={handleSpeechRatePress}
-        />
-      )}
-      {selectedWord && (
-        <VocabularyModal
-          word={selectedWord}
-          userId={userId}
-          onClose={closeVocabularyModal}
-        />
-      )}
-    </SafeAreaView>
+
+          <View style={styles.textModeControl}>
+            <View
+              style={[
+                styles.modeButtonsGroup,
+                !isDarkMode && { backgroundColor: theme.colors.surface },
+              ]}
+            >
+              {modeLayouts.original && modeLayouts.learning && (
+                <Animated.View
+                  pointerEvents="none"
+                  style={[
+                    styles.modeIndicator,
+                    {
+                      left: modeAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [
+                          modeLayouts.original.x,
+                          modeLayouts.learning.x,
+                        ],
+                      }),
+                      width: modeAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [
+                          modeLayouts.original.width,
+                          modeLayouts.learning.width,
+                        ],
+                      }),
+                    },
+                  ]}
+                />
+              )}
+              <TouchableOpacity
+                style={[
+                  styles.textModeButton,
+                  !modeLayouts.original &&
+                    !isSegmented &&
+                    styles.textModeButtonActive,
+                ]}
+                onLayout={(event) => {
+                  const { x, width } = event.nativeEvent.layout;
+                  setModeLayouts((current) => ({
+                    ...current,
+                    original: { x, width },
+                  }));
+                }}
+                onPress={() => {
+                  Haptics.selectionAsync().catch(() => {});
+                  fetchPassageById(id);
+                  setIsSegmented(false);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.textModeLabel,
+                    !isSegmented && styles.textModeLabelActive,
+                    !isDarkMode && { color: theme.colors.text },
+                  ]}
+                >
+                  Original
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.textModeButton,
+                  !modeLayouts.learning &&
+                    isSegmented &&
+                    styles.textModeButtonActive,
+                ]}
+                onLayout={(event) => {
+                  const { x, width } = event.nativeEvent.layout;
+                  setModeLayouts((current) => ({
+                    ...current,
+                    learning: { x, width },
+                  }));
+                }}
+                onPress={() => {
+                  Haptics.selectionAsync().catch(() => {});
+                  fetchSegementedPassageById(id);
+                  setIsSegmented(true);
+                }}
+                // onPress={() => segmentedPassage && setIsSegmented(true)}
+                disabled={isSegmented}
+              >
+                <Text
+                  style={[
+                    styles.textModeLabel,
+                    isSegmented && styles.textModeLabelActive,
+                    !segmentedPassage && styles.textModeLabelDisabled,
+                    !isDarkMode && { color: theme.colors.text },
+                  ]}
+                >
+                  Learning Mode
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <View
+              style={[
+                styles.pinyinToggle,
+                !isDarkMode && {
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.textModeLabelPinyin,
+                  !isDarkMode && { color: theme.colors.text },
+                ]}
+              >
+                Pinyin
+              </Text>
+              <Switch
+                value={showPinyin}
+                onValueChange={handlePinyinToggle}
+                trackColor={{
+                  false: isDarkMode ? "#4E6159" : theme.colors.border,
+                  true: theme.colors.primary,
+                }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+          </View>
+
+          <View
+            style={styles.paragraphContainer}
+            onLayout={(event) => setParagraphLayout(event.nativeEvent.layout)}
+          >
+            <View
+              style={[
+                styles.wordRow,
+                { backgroundColor: isDarkMode ? "#000000" : "#FFF4E6" },
+              ]}
+            >
+              {(isSegmented || showPinyin || isReadingAloud) &&
+              segmentedPassage ? (
+                (() => {
+                  const wordSentenceIndexes = getWordSentenceIndexes();
+                  let consumed = 0;
+                  return segmentedPassage.map((entry, index) => {
+                    const wordStart = consumed;
+                    consumed += entry.word.replace(/\s/g, "").length;
+                    if (entry.word === "\n") {
+                      return (
+                        <View
+                          key={`break-${index}`}
+                          style={{ width: "100%", height: 14 }}
+                        />
+                      );
+                    }
+                    const isSpoken =
+                      spokenCharPos !== null
+                        ? spokenCharPos >= wordStart && spokenCharPos < consumed
+                        : spokenSentenceIndex !== null &&
+                          wordSentenceIndexes[index] === spokenSentenceIndex;
+                    return (
+                      <WordToken
+                        key={`${entry.word}-${index}`}
+                        entry={entry}
+                        isSpoken={isSpoken}
+                        showPinyin={showPinyin}
+                        isSegmented={isSegmented}
+                        textColor={theme.colors.text}
+                        onWordPress={openVocabularyModal}
+                        index={index}
+                        onLayoutY={handleWordLayout}
+                      />
+                    );
+                  });
+                })()
+              ) : (
+                <Text style={[styles.normalText, { color: theme.colors.text }]}>
+                  {passage || "Loading..."}
+                </Text>
+              )}
+            </View>
+          </View>
+        </ScrollView>
+        {isAudioControllerVisible && (
+          <AudioController
+            isReadingAloud={isReadingAloud}
+            speechRate={speechRate}
+            theme={theme}
+            onSkip={handleSpeechSkip}
+            onPlayPress={handleSpeechPlayPress}
+            onRatePress={handleSpeechRatePress}
+            isAutoScrollEnabled={isAutoScrollEnabled}
+            onAutoScrollToggle={() => {
+              lastScrolledWord.current = null;
+              setIsAutoScrollEnabled((enabled) => !enabled);
+            }}
+          />
+        )}
+        {selectedWord && (
+          <VocabularyModal
+            word={selectedWord}
+            userId={userId}
+            onClose={closeVocabularyModal}
+            onLookup={handleWordLookedUp}
+          />
+        )}
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
+  backgroundImage: {
+    flex: 1,
+  },
+
   container: {
     flex: 1,
     backgroundColor: "#FFFFFF",
@@ -499,11 +875,27 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    height: 60,
+    minHeight: 60,
     paddingHorizontal: 18,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+
+  backButton: {
+    width: 48,
+    height: 48,
+    marginLeft: -12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  likeButton: {
+    width: 48,
+    height: 48,
+    marginRight: -12,
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   back: {
@@ -591,7 +983,7 @@ const styles = StyleSheet.create({
 
   textModeControl: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "stretch",
     justifyContent: "center",
     gap: 10,
     marginBottom: 18,
@@ -601,7 +993,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     padding: 4,
     borderRadius: 14,
-    backgroundColor: "#4e6174",
+    backgroundColor: "#1E2925",
   },
 
   textModeButton: {
@@ -609,11 +1001,25 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     paddingHorizontal: 16,
     alignItems: "center",
+    justifyContent: "center",
     borderRadius: 10,
   },
 
   textModeButtonActive: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F6C945",
+    shadowColor: "#172033",
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+
+  modeIndicator: {
+    position: "absolute",
+    top: 4,
+    bottom: 4,
+    borderRadius: 10,
+    backgroundColor: "#F6C945",
     shadowColor: "#172033",
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -630,8 +1036,8 @@ const styles = StyleSheet.create({
     paddingBottom: 9,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: "#000000",
-    backgroundColor: "#F4FAFD",
+    borderColor: "#1E2925",
+    backgroundColor: "#1E2925",
     gap: 4,
   },
 
@@ -679,7 +1085,7 @@ const styles = StyleSheet.create({
   },
 
   textModeLabelActive: {
-    color: "#087FB9",
+    color: "#1E2925",
   },
 
   textModeLabelDisabled: {
@@ -687,7 +1093,7 @@ const styles = StyleSheet.create({
   },
 
   textModeLabelPinyin: {
-    color: "#087FB9",
+    color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "800",
   },
@@ -697,6 +1103,10 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     alignItems: "center",
     gap: 5,
+    borderRadius: 16,
+    padding: 14,
+    paddingBottom: 22,
+    marginHorizontal: -12,
   },
 
   wordWithPinyin: {

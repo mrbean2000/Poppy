@@ -7,6 +7,24 @@ public class PassageDto {
     private String passage;
     private String title;
     private String imageUrl;
+    private String sourceUrl;
+    private Integer userId;
+
+    public String getSourceUrl() {
+        return sourceUrl;
+    }
+
+    public void setSourceUrl(String sourceUrl) {
+        this.sourceUrl = sourceUrl;
+    }
+
+    public Integer getUserId() {
+        return userId;
+    }
+
+    public void setUserId(Integer userId) {
+        this.userId = userId;
+    }
 
     public String getImageUrl() {
         return imageUrl;

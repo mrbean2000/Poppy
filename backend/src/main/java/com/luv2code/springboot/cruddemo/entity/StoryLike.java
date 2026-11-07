@@ -12,8 +12,8 @@ public class StoryLike {
     @Column(name="id")
     private int id;
 
-//    @Column(name = "user_id", nullable = false)
-//    private Long userId;
+    @Column(name = "user_id", nullable = false)
+    private int userId;
 
     @Column(name = "post_id", nullable = false)
     private int postId;
@@ -22,6 +22,25 @@ public class StoryLike {
     private boolean like;
 
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt = LocalDateTime.now();
+
+    public int getUserId() {
+        return userId;
+    }
+
+    public void setUserId(int userId) {
+        this.userId = userId;
+    }
+
+    public LocalDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(LocalDateTime updatedAt) {
+        this.updatedAt = updatedAt;
+    }
 
     public int getId() {
         return id;

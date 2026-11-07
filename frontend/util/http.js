@@ -1,11 +1,11 @@
 import axios from "axios";
 import { File, Paths } from "expo-file-system";
 
-// const BACKEND_URL = "http://192.168.0.10:8080/api";
-// const NODE_BACKEND_URL = "http://192.168.0.10:3001";
+const BACKEND_URL = "http://192.168.0.7:8080/api";
+const NODE_BACKEND_URL = "http://192.168.0.7:3001";
 
-const BACKEND_URL = "http://192.168.115.60:8080/api";
-const NODE_BACKEND_URL = "http://192.168.115.60:3001";
+// const BACKEND_URL = "http://192.168.115.60:8080/api";
+// const NODE_BACKEND_URL = "http://192.168.115.60:3001";
 
 export async function getAllPassage() {
   try {
@@ -26,9 +26,12 @@ export async function getAllPassage() {
   }
 }
 
-export async function createPassage(url) {
+export async function createPassage(url, userId) {
   try {
-    const response = await axios.post(`${NODE_BACKEND_URL}/passages`, { url });
+    const response = await axios.post(`${NODE_BACKEND_URL}/passages`, {
+      url,
+      userId,
+    });
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
@@ -41,12 +44,18 @@ export async function createPassage(url) {
   }
 }
 
-export async function createPassageFromText({ title, imageUrl, passage }) {
+export async function createPassageFromText({
+  title,
+  imageUrl,
+  passage,
+  userId,
+}) {
   try {
     const response = await axios.post(`${BACKEND_URL}/passage`, {
       title,
       imageUrl,
       passage,
+      userId,
     });
     return response.data;
   } catch (error) {
@@ -706,9 +715,11 @@ export async function getPodcastEpisodeTranscriptOrGenerate(
 
 // Story
 
-export async function getStoryLike(postId) {
+export async function getStoryLike(userId, postId) {
   try {
-    const response = await axios.get(`${BACKEND_URL}/story-like/${postId}`);
+    const response = await axios.get(
+      `${BACKEND_URL}/story-like/user/${userId}/passage/${postId}`,
+    );
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
@@ -724,9 +735,10 @@ export async function getStoryLike(postId) {
   }
 }
 
-export async function updateStoryLike(postId, like) {
+export async function updateStoryLike(userId, postId, like) {
   try {
     const response = await axios.put(`${BACKEND_URL}/story-like`, {
+      userId,
       postId,
       like,
     });
@@ -813,6 +825,65 @@ export async function getLastReadPassageByUserId(userId) {
       const status = error.response?.status;
       const message = status
         ? `Failed to load the last-read passage (HTTP ${status}).`
+        : "Unable to connect to the passage server.";
+
+      throw new Error(message, { cause: error });
+    }
+
+    throw error;
+  }
+}
+
+export async function updateLastReadPassage(userId, passageId) {
+  try {
+    await axios.put(
+      `${BACKEND_URL}/UserPassageProgress/${userId}/last-read-passage/${passageId}`,
+    );
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      const message = status
+        ? `Failed to save reading progress (HTTP ${status}).`
+        : "Unable to connect to the passage server.";
+
+      throw new Error(message, { cause: error });
+    }
+
+    throw error;
+  }
+}
+
+export async function recordPassageCompletion(userId, passageId) {
+  try {
+    const response = await axios.post(
+      `${BACKEND_URL}/UserPassageCompletion/${userId}/passage/${passageId}`,
+    );
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      const message = status
+        ? `Failed to record passage completion (HTTP ${status}).`
+        : "Unable to connect to the passage server.";
+
+      throw new Error(message, { cause: error });
+    }
+
+    throw error;
+  }
+}
+
+export async function getTodayCompletedCount(userId) {
+  try {
+    const response = await axios.get(
+      `${BACKEND_URL}/UserPassageCompletion/${userId}/today-count`,
+    );
+    return response.data.completedToday ?? 0;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      const message = status
+        ? `Failed to load today's progress (HTTP ${status}).`
         : "Unable to connect to the passage server.";
 
       throw new Error(message, { cause: error });

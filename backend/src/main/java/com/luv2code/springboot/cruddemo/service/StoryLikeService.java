@@ -7,7 +7,7 @@ import com.luv2code.springboot.cruddemo.entity.StoryLike;
 import java.util.List;
 
 public interface StoryLikeService {
-    StoryLike getByPassageId(int passageId);
+    StoryLike getByUserAndPassage(int userId, int passageId);
 
 //    StoryLike create(PassageDto thePassage);
 

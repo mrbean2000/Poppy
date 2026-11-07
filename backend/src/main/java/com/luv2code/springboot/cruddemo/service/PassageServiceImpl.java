@@ -2,14 +2,17 @@ package com.luv2code.springboot.cruddemo.service;
 
 import com.hankcs.hanlp.HanLP;
 import com.luv2code.springboot.cruddemo.dao.PassageRepository;
+import com.luv2code.springboot.cruddemo.dao.UserPassageRepository;
 import com.luv2code.springboot.cruddemo.dto.PassageDto;
 import com.luv2code.springboot.cruddemo.dto.PassageOnlyDto;
 import com.luv2code.springboot.cruddemo.dto.PassageTitleOnlyDto;
 import com.luv2code.springboot.cruddemo.dto.SegmentedWordDto;
 import com.luv2code.springboot.cruddemo.entity.Passage;
+import com.luv2code.springboot.cruddemo.entity.UserPassage;
 import com.luv2code.springboot.cruddemo.exception.ResourceNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -18,15 +21,18 @@ import java.util.Optional;
 public class PassageServiceImpl implements PassageService {
 
     private PassageRepository passageRepository;
+    private UserPassageRepository userPassageRepository;
     private DictionaryService dictionaryService;
     private VocabularyProgressService vocabularyProgressService;
 
     @Autowired
     public PassageServiceImpl(
             PassageRepository thePassageRepository,
+            UserPassageRepository theUserPassageRepository,
             DictionaryService theDictionaryService,
             VocabularyProgressService theVocabularyProgressService) {
         passageRepository = thePassageRepository;
+        userPassageRepository = theUserPassageRepository;
         dictionaryService = theDictionaryService;
         vocabularyProgressService = theVocabularyProgressService;
     }
@@ -57,10 +63,21 @@ public class PassageServiceImpl implements PassageService {
             throw new RuntimeException("Passage not found");
         }
 
-        List<String> words = HanLP.segment(passage.getPassage())
-                .stream()
-                .map(term -> term.word)
-                .toList();
+        List<String> words = new java.util.ArrayList<>();
+        String[] paragraphs = passage.getPassage().split("\\r?\\n");
+        for (String paragraph : paragraphs) {
+            if (paragraph.isBlank()) {
+                continue;
+            }
+            if (!words.isEmpty()) {
+                words.add("\n");
+            }
+            HanLP.segment(paragraph.strip())
+                    .stream()
+                    .map(term -> term.word)
+                    .filter(word -> !word.isBlank())
+                    .forEach(words::add);
+        }
         return words;
     }
 
@@ -78,6 +95,9 @@ public class PassageServiceImpl implements PassageService {
 
         return words.stream()
                 .map(word -> {
+                    if (word.equals("\n")) {
+                        return new SegmentedWordDto(word, null, null);
+                    }
                     Integer statusLevel = statusLevels.get(word);
                     try {
                         return new SegmentedWordDto(
@@ -111,11 +131,19 @@ public class PassageServiceImpl implements PassageService {
         }
     }
 
+    @Transactional
     public Passage create(PassageDto thePassage){
 
         Passage passage = new Passage(0, thePassage.getPassage(), thePassage.getTitle(), thePassage.getImageUrl());
+        passage.setSourceUrl(thePassage.getSourceUrl());
 
-        return passageRepository.save(passage);
+        Passage saved = passageRepository.save(passage);
+
+        if (thePassage.getUserId() != null) {
+            userPassageRepository.save(new UserPassage(thePassage.getUserId(), saved.getId()));
+        }
+
+        return saved;
     }
 
     public Passage update(PassageDto thePassage){

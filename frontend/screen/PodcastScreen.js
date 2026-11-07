@@ -1,8 +1,9 @@
-import { useRef, useState } from "react";
+﻿import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   Image,
+  ImageBackground,
   Keyboard,
   SafeAreaView,
   StyleSheet,
@@ -16,7 +17,8 @@ import { getPodcastEpisodes, searchPodcasts } from "../util/http";
 import { useTheme } from "../theme/ThemeContext";
 
 export default function PodcastScreen({ navigation }) {
-  const { theme } = useTheme();
+  const { theme, isDarkMode } = useTheme();
+  const itemBackground = isDarkMode ? "#000000" : "#FFFFFF";
   const [searchQuery, setSearchQuery] = useState("");
   const [searchType, setSearchType] = useState("channel");
   const [searchResults, setSearchResults] = useState([]);
@@ -238,7 +240,7 @@ export default function PodcastScreen({ navigation }) {
           style={[
             styles.episodeCard,
             {
-              backgroundColor: theme.colors.surface,
+              backgroundColor: itemBackground,
               borderColor: theme.colors.border,
             },
           ]}
@@ -302,7 +304,7 @@ export default function PodcastScreen({ navigation }) {
                   : null,
               ]
                 .filter(Boolean)
-                .join(" · ") || "Podcast episode"}
+                .join(" Â· ") || "Podcast episode"}
             </Text>
           </View>
         </View>
@@ -314,7 +316,7 @@ export default function PodcastScreen({ navigation }) {
         style={[
           styles.podcastCard,
           {
-            backgroundColor: theme.colors.surface,
+            backgroundColor: itemBackground,
             borderColor: theme.colors.border,
           },
         ]}
@@ -402,16 +404,23 @@ export default function PodcastScreen({ navigation }) {
   }
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    <ImageBackground
+      source={
+        isDarkMode
+          ? require("../assets/images/masot/backgroundimagequestion_darkmode.png")
+          : require("../assets/images/masot/backgroundimagequestion.png")
+      }
+      style={styles.container}
+      resizeMode="cover"
     >
+    <SafeAreaView style={[styles.container, { backgroundColor: "transparent" }]}>
       <View style={styles.fixedHeader}>
         {selectedChannel ? (
           <View style={styles.header}>
             <TouchableOpacity
               style={[
                 styles.backButton,
-                { backgroundColor: theme.colors.surface },
+                { backgroundColor: itemBackground },
               ]}
               onPress={closeChannel}
               accessibilityRole="button"
@@ -475,7 +484,7 @@ export default function PodcastScreen({ navigation }) {
             <TouchableOpacity
               style={[
                 styles.backButton,
-                { backgroundColor: theme.colors.surface },
+                { backgroundColor: itemBackground },
               ]}
               onPress={() => navigation.goBack()}
               accessibilityRole="button"
@@ -498,7 +507,7 @@ export default function PodcastScreen({ navigation }) {
             <View
               style={[
                 styles.searchTypeSwitch,
-                { backgroundColor: theme.colors.surface },
+                { backgroundColor: itemBackground },
               ]}
               accessibilityRole="tablist"
               accessibilityLabel="Podcast search type"
@@ -542,7 +551,7 @@ export default function PodcastScreen({ navigation }) {
               style={[
                 styles.searchBox,
                 {
-                  backgroundColor: theme.colors.surface,
+                  backgroundColor: itemBackground,
                   borderColor: theme.colors.border,
                 },
               ]}
@@ -563,6 +572,21 @@ export default function PodcastScreen({ navigation }) {
                 autoCorrect={false}
                 accessibilityLabel="Search podcasts"
               />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => setSearchQuery("")}
+                  hitSlop={8}
+                  style={{ marginRight: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear search"
+                >
+                  <MaterialCommunityIcons
+                    name="close-circle"
+                    size={20}
+                    color={theme.colors.textSecondary}
+                  />
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={[
                   styles.searchButton,
@@ -612,6 +636,7 @@ export default function PodcastScreen({ navigation }) {
         keyboardShouldPersistTaps="handled"
       />
     </SafeAreaView>
+    </ImageBackground>
   );
 }
 

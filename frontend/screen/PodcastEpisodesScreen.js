@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  ImageBackground,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -14,7 +15,8 @@ import { getPodcastEpisodes } from "../util/http";
 import { useTheme } from "../theme/ThemeContext";
 
 export default function PodcastEpisodesScreen({ navigation, route }) {
-  const { theme } = useTheme();
+  const { theme, isDarkMode } = useTheme();
+  const itemBackground = isDarkMode ? "#000000" : "#FFFFFF";
   const channel = route.params?.channel;
   const [episodes, setEpisodes] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -49,14 +51,21 @@ export default function PodcastEpisodesScreen({ navigation, route }) {
   const channelArtwork = channel?.artworkUrl600 || channel?.artworkUrl100;
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    <ImageBackground
+      source={
+        isDarkMode
+          ? require("../assets/images/masot/backgroundimagequestion_darkmode.png")
+          : require("../assets/images/masot/backgroundimagequestion.png")
+      }
+      style={styles.container}
+      resizeMode="cover"
     >
+    <SafeAreaView style={[styles.container, { backgroundColor: "transparent" }]}>
       <View style={styles.fixedHeader}>
         <TouchableOpacity
           style={[
             styles.backButton,
-            { backgroundColor: theme.colors.surface },
+            { backgroundColor: itemBackground },
           ]}
           onPress={() => navigation.goBack()}
           accessibilityRole="button"
@@ -159,7 +168,7 @@ export default function PodcastEpisodesScreen({ navigation, route }) {
                 style={[
                   styles.episodeCard,
                   {
-                    backgroundColor: theme.colors.surface,
+                    backgroundColor: itemBackground,
                     borderColor: theme.colors.border,
                   },
                 ]}
@@ -213,7 +222,7 @@ export default function PodcastEpisodesScreen({ navigation, route }) {
                         : null,
                     ]
                       .filter(Boolean)
-                      .join(" · ") || "Podcast episode"}
+                      .join(" Â· ") || "Podcast episode"}
                   </Text>
                 </View>
               </TouchableOpacity>
@@ -222,6 +231,7 @@ export default function PodcastEpisodesScreen({ navigation, route }) {
         )}
       </ScrollView>
     </SafeAreaView>
+    </ImageBackground>
   );
 }
 

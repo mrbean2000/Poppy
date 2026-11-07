@@ -20,6 +20,17 @@ public class Passage {
     @Column(name="image_url")
     private String imageUrl;
 
+    @Column(name="source_url")
+    private String sourceUrl;
+
+    public String getSourceUrl() {
+        return sourceUrl;
+    }
+
+    public void setSourceUrl(String sourceUrl) {
+        this.sourceUrl = sourceUrl;
+    }
+
     public int getId() {
         return id;
     }

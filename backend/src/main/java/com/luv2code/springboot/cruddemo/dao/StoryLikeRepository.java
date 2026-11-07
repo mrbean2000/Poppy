@@ -5,4 +5,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface StoryLikeRepository extends JpaRepository<StoryLike, Integer> {
 	StoryLike findByPostId(int postId);
+
+	StoryLike findByUserIdAndPostId(int userId, int postId);
 }

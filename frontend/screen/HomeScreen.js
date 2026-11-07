@@ -13,12 +13,14 @@ import {
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {
   getLastReadPassageByUserId,
+  getTodayCompletedCount,
   getUserProfileByFirebaseUid,
   getUserVocabulary,
   getUserSettings,
   recordLoginStreak,
 } from "../util/http";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import { useAuth } from "../context/AuthContext";
 import { usePodcastPlayback } from "../components/PodcastPlaybackContext";
 import { useOnboardingSelections } from "../context/OnboardingSelectionContext";
@@ -32,11 +34,17 @@ export default function HomeScreen({ navigation }) {
   const [settings, setSettings] = useState(null);
   const [lastReadPassage, setLastReadPassage] = useState(null);
   const [vocabularyCount, setVocabularyCount] = useState(0);
+  const [completedToday, setCompletedToday] = useState(0);
   const [loginStreak, setLoginStreak] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const dailyGoal = selections.dailyReadingGoal ?? 10;
+  const dailyGoal = settings?.dailyReadingGoal ?? 10;
+  const goalPercent =
+    dailyGoal > 0
+      ? Math.min(100, Math.round((completedToday / dailyGoal) * 100))
+      : 0;
+  const profileIdRef = useRef(null);
 
   async function handleSignOut() {
     setIsSigningOut(true);
@@ -72,6 +80,14 @@ export default function HomeScreen({ navigation }) {
     }
   }
 
+  async function fetchCompletedToday(userId) {
+    try {
+      setCompletedToday(await getTodayCompletedCount(userId));
+    } catch (error) {
+      setErrorMessage(error.message);
+    }
+  }
+
   async function fetchLoginStreak(firebaseUid) {
     try {
       const streak = await recordLoginStreak(firebaseUid);
@@ -101,8 +117,10 @@ export default function HomeScreen({ navigation }) {
         }
         console.log("@@@@@@@@@@@@@@@@@@@@@@@@@");
         console.log(profile);
+        profileIdRef.current = profile.id;
         fetchUserSettings(profile.id);
         fetchLastReadPassage(profile.id);
+        fetchCompletedToday(profile.id);
         fetchVocabularyCount(profile.id);
         fetchLoginStreak(user.uid);
       } catch (error) {
@@ -112,6 +130,17 @@ export default function HomeScreen({ navigation }) {
 
     loadUserData();
   }, [user?.uid]);
+
+  // Refresh "Continue Reading" whenever Home regains focus (e.g. after the reader).
+  useFocusEffect(
+    useCallback(() => {
+      if (profileIdRef.current) {
+        fetchLastReadPassage(profileIdRef.current);
+        fetchCompletedToday(profileIdRef.current);
+        fetchVocabularyCount(profileIdRef.current);
+      }
+    }, []),
+  );
 
   return (
     <ImageBackground
@@ -134,9 +163,7 @@ export default function HomeScreen({ navigation }) {
 
           <View style={styles.header}>
             <View style={styles.greetingBlock}>
-              <Text
-                style={[styles.greeting, { color: theme.colors.textSecondary }]}
-              >
+              <Text style={[styles.greeting, { color: theme.colors.text }]}>
                 Welcome back
               </Text>
               <Text style={[styles.name, { color: theme.colors.text }]}>
@@ -201,7 +228,7 @@ export default function HomeScreen({ navigation }) {
                   </Text>
 
                   <Text style={[styles.goalProgress, { color: "#000000" }]}>
-                    5 / {dailyGoal} words
+                    {completedToday} / {dailyGoal} passages
                   </Text>
                 </View>
               </View>
@@ -218,7 +245,10 @@ export default function HomeScreen({ navigation }) {
               <View
                 style={[
                   styles.progressFill,
-                  { backgroundColor: theme.colors.primary },
+                  {
+                    backgroundColor: theme.colors.primary,
+                    width: `${goalPercent}%`,
+                  },
                 ]}
               />
             </View>
@@ -230,7 +260,7 @@ export default function HomeScreen({ navigation }) {
                   { color: theme.colors.primary },
                 ]}
               >
-                50%
+                {goalPercent}%
               </Text>
             </View>
           </View>
@@ -279,12 +309,20 @@ export default function HomeScreen({ navigation }) {
 
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleGroup}>
-              <MaterialCommunityIcons
-                name="book-open-page-variant"
-                size={28}
-                color="#2B9CF4"
+              <Image
+                source={require("../assets/icons/book-icon.png")}
+                style={styles.quickIconImage}
+                resizeMode="contain"
+                accessibilityLabel="Book"
               />
-              <Text style={styles.sectionTitle}>Continue Reading</Text>
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { color: isDarkMode ? "#FFFCF5" : "#172033" },
+                ]}
+              >
+                Continue Reading
+              </Text>
             </View>
 
             <TouchableOpacity onPress={() => navigation.navigate("Stories")}>

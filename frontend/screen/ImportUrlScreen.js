@@ -1,5 +1,7 @@
 import {
   Alert,
+  Animated,
+  ImageBackground,
   SafeAreaView,
   StyleSheet,
   Text,
@@ -7,15 +9,79 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { useFocusEffect } from "@react-navigation/native";
 import { useTheme } from "../theme/ThemeContext";
 import { createPassage } from "../util/http";
 
 export default function ImportUrlScreen({ navigation }) {
-  const { theme } = useTheme();
+  const { theme, isDarkMode, backendUserId } = useTheme();
   const [url, setUrl] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const urlInputRef = useRef(null);
+  const contentOpacity = useRef(new Animated.Value(0)).current;
+  const contentOffset = useRef(new Animated.Value(20)).current;
+  const backPressScale = useRef(new Animated.Value(1)).current;
+
+  useFocusEffect(
+    useCallback(() => {
+      contentOpacity.setValue(0);
+      contentOffset.setValue(20);
+
+      const animation = Animated.parallel([
+        Animated.timing(contentOpacity, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.timing(contentOffset, {
+          toValue: 0,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+      ]);
+
+      animation.start();
+
+      return () => animation.stop();
+    }, [contentOffset, contentOpacity]),
+  );
+
+  function animateBackPressIn() {
+    Animated.spring(backPressScale, {
+      toValue: 0.86,
+      speed: 28,
+      bounciness: 8,
+      useNativeDriver: true,
+    }).start();
+  }
+
+  function animateBackPressOut() {
+    Animated.spring(backPressScale, {
+      toValue: 1,
+      speed: 24,
+      bounciness: 10,
+      useNativeDriver: true,
+    }).start();
+  }
+
+  function goBack() {
+    animateBackPressIn();
+    setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(contentOpacity, {
+          toValue: 0,
+          duration: 170,
+          useNativeDriver: true,
+        }),
+        Animated.timing(contentOffset, {
+          toValue: -20,
+          duration: 170,
+          useNativeDriver: true,
+        }),
+      ]).start(() => navigation.goBack());
+    }, 110);
+  }
 
   async function handleImport() {
     const trimmedUrl = url.trim();
@@ -37,7 +103,7 @@ export default function ImportUrlScreen({ navigation }) {
 
     try {
       setIsSubmitting(true);
-      const createdPassage = await createPassage(trimmedUrl);
+      const createdPassage = await createPassage(trimmedUrl, backendUserId);
       const importedPassage =
         createdPassage.data.passage ?? createdPassage.data.passage;
       const passageId = createdPassage.data.id ?? createdPassage.data.passageId;
@@ -61,60 +127,87 @@ export default function ImportUrlScreen({ navigation }) {
   }
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    <ImageBackground
+      source={
+        isDarkMode
+          ? require("../assets/images/masot/backgroundimagequestion_darkmode.png")
+          : require("../assets/images/masot/backgroundimagequestion.png")
+      }
+      style={styles.container}
+      resizeMode="cover"
     >
-      <View style={styles.content}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
+      <SafeAreaView style={styles.container}>
+        <Animated.View
+          style={[
+            styles.content,
+            {
+              opacity: contentOpacity,
+              transform: [{ translateX: contentOffset }],
+            },
+          ]}
         >
-          <Text style={[styles.back, { color: theme.colors.text }]}>‹</Text>
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: theme.colors.text }]}>
-          Import via URL
-        </Text>
-        <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
-          Paste an article URL to import vocabulary.
-        </Text>
-
-        <View style={styles.form}>
-          <TextInput
-            ref={urlInputRef}
-            value={url}
-            onChangeText={setUrl}
-            placeholder="Paste an article URL"
-            placeholderTextColor={theme.colors.textSecondary}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            returnKeyType="go"
-            onSubmitEditing={handleImport}
-            style={[
-              styles.input,
-              {
-                color: theme.colors.text,
-                borderColor: theme.colors.textSecondary,
-              },
-            ]}
-          />
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.colors.primary }]}
-            onPress={handleImport}
-            disabled={isSubmitting}
-            accessibilityRole="button"
-            accessibilityLabel="Import passage"
+          <Animated.View
+            style={{
+              alignSelf: "flex-start",
+              transform: [{ scale: backPressScale }],
+            }}
           >
-            <Text
-              style={[styles.buttonText, { color: theme.colors.primaryText }]}
+            <TouchableOpacity
+              onPress={goBack}
+              onPressIn={animateBackPressIn}
+              onPressOut={animateBackPressOut}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
             >
-              {isSubmitting ? "Importing..." : "Import"}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </SafeAreaView>
+              <Text style={[styles.back, { color: theme.colors.text }]}>‹</Text>
+            </TouchableOpacity>
+          </Animated.View>
+          <Text style={[styles.title, { color: theme.colors.text }]}>
+            Import via URL
+          </Text>
+          <Text
+            style={[styles.subtitle, { color: theme.colors.textSecondary }]}
+          >
+            Paste an article URL to import passage.
+          </Text>
+
+          <View style={styles.form}>
+            <TextInput
+              ref={urlInputRef}
+              value={url}
+              onChangeText={setUrl}
+              placeholder="Paste an article URL"
+              placeholderTextColor={theme.colors.textSecondary}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              returnKeyType="go"
+              onSubmitEditing={handleImport}
+              style={[
+                styles.input,
+                {
+                  color: theme.colors.text,
+                  borderColor: theme.colors.textSecondary,
+                },
+              ]}
+            />
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: theme.colors.primary }]}
+              onPress={handleImport}
+              disabled={isSubmitting}
+              accessibilityRole="button"
+              accessibilityLabel="Import passage"
+            >
+              <Text
+                style={[styles.buttonText, { color: theme.colors.primaryText }]}
+              >
+                {isSubmitting ? "Importing..." : "Import"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 

@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  ImageBackground,
+  PanResponder,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -16,6 +19,7 @@ import { usePodcastPlayback } from "../components/PodcastPlaybackContext";
 import { useTheme } from "../theme/ThemeContext";
 
 const SEEK_INTERVAL_SECONDS = 15;
+const TAP_MOVE_TOLERANCE = 5;
 
 function formatTime(seconds) {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
@@ -26,7 +30,8 @@ function formatTime(seconds) {
 }
 
 export default function PodcastPlayerScreen({ navigation, route }) {
-  const { theme } = useTheme();
+  const { theme, isDarkMode } = useTheme();
+  const itemBackground = isDarkMode ? "#000000" : "#FFFFFF";
   const channel = route.params?.channel;
   const episode = route.params?.episode;
   const audioUrl = episode?.episodeUrl || null;
@@ -35,6 +40,63 @@ export default function PodcastPlayerScreen({ navigation, route }) {
   const [playbackError, setPlaybackError] = useState(null);
   const [progressWidth, setProgressWidth] = useState(0);
   const [dragPosition, setDragPosition] = useState(null);
+  const [seekTarget, setSeekTarget] = useState(null);
+  const [isSeeking, setIsSeeking] = useState(false);
+  const dragPositionRef = useRef(null);
+  const seekRequestRef = useRef(0);
+  const autoplayInputsRef = useRef(null);
+  autoplayInputsRef.current = { channel, episode, currentPodcast, status };
+  const barPageXRef = useRef(0);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const pageScrollRef = useRef(null);
+  const scrubScrollLockedRef = useRef(false);
+  const scrubActiveRef = useRef(false);
+  const scrubTouchRef = useRef(null);
+
+  function lockPageScroll() {
+    if (scrubScrollLockedRef.current) return;
+    scrubScrollLockedRef.current = true;
+    pageScrollRef.current?.setNativeProps({
+      scrollEnabled: false,
+      ...(Platform.OS === "ios" ? { canCancelContentTouches: false } : {}),
+    });
+  }
+  function unlockPageScroll() {
+    if (!scrubScrollLockedRef.current) return;
+    scrubScrollLockedRef.current = false;
+    pageScrollRef.current?.setNativeProps({
+      scrollEnabled: true,
+      ...(Platform.OS === "ios" ? { canCancelContentTouches: true } : {}),
+    });
+  }
+  const scrubMetricsRef = useRef({ duration: 0, width: 0 });
+  const seekToPositionRef = useRef(null);
+  const scrubResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_event, gestureState) =>
+        scrubTouchRef.current !== null &&
+        scrubMetricsRef.current.duration > 0 &&
+        scrubMetricsRef.current.width > 0 &&
+        Math.abs(gestureState.dx) > Math.abs(gestureState.dy),
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: (event) => {
+        // The track ignores touches, so the touch area is the target.
+        barPageXRef.current =
+          event.nativeEvent.pageX - event.nativeEvent.locationX;
+        scrubTouchRef.current = null;
+        scrubActiveRef.current = true;
+        lockPageScroll();
+        setIsScrubbing(true);
+        setSeekTarget(null);
+        updateScrubPosition(event.nativeEvent.pageX);
+      },
+      // moveX is the finger's screen X, so it keeps tracking off the bar.
+      onPanResponderMove: (_event, gestureState) =>
+        updateScrubPosition(gestureState.moveX),
+      onPanResponderRelease: () => finishScrub(dragPositionRef.current),
+      onPanResponderTerminate: () => finishScrub(dragPositionRef.current),
+    }),
+  ).current;
   const [transcriptCues, setTranscriptCues] = useState([]);
   const [isTimedTranscript, setIsTimedTranscript] = useState(false);
   const [isLoadingTranscript, setIsLoadingTranscript] = useState(true);
@@ -44,19 +106,43 @@ export default function PodcastPlayerScreen({ navigation, route }) {
   const transcriptScrollRef = useRef(null);
   const transcriptCueLayouts = useRef({});
 
+  useEffect(() => () => unlockPageScroll(), []);
+
   useEffect(() => {
-    if (episode && currentPodcast?.episode?.episodeUrl !== episode.episodeUrl) {
+    if (!audioUrl) return;
+    let isCurrent = true;
+    const { channel, episode, currentPodcast, status } =
+      autoplayInputsRef.current;
+
+    async function startEpisode() {
       try {
         loadEpisode(channel, episode);
+        if (
+          currentPodcast?.episode?.episodeUrl === audioUrl &&
+          status.didJustFinish
+        ) {
+          await player.seekTo(0);
+        }
+        if (isCurrent) {
+          setPlaybackError(null);
+          player.play();
+        }
       } catch (error) {
-        setPlaybackError(
-          error instanceof Error
-            ? error.message
-            : "Unable to load this podcast episode.",
-        );
+        if (isCurrent) {
+          setPlaybackError(
+            error instanceof Error
+              ? error.message
+              : "Unable to play this podcast episode.",
+          );
+        }
       }
     }
-  }, [channel, currentPodcast?.episode?.episodeUrl, episode, loadEpisode]);
+
+    startEpisode();
+    return () => {
+      isCurrent = false;
+    };
+  }, [audioUrl, loadEpisode, player]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -126,7 +212,8 @@ export default function PodcastPlayerScreen({ navigation, route }) {
     status.duration > 0
       ? status.duration
       : (episode?.trackTimeMillis || 0) / 1000;
-  const shownPosition = dragPosition ?? status.currentTime;
+  const shownPosition = dragPosition ?? seekTarget ?? status.currentTime;
+  scrubMetricsRef.current = { duration, width: progressWidth };
   const progress =
     duration > 0 ? Math.min(1, Math.max(0, shownPosition / duration)) : 0;
   const activeCueIndex = transcriptCues.reduce(
@@ -148,30 +235,63 @@ export default function PodcastPlayerScreen({ navigation, route }) {
     });
   }, [activeCueIndex, transcriptViewportHeight, transcriptCues]);
 
+  useEffect(() => {
+    if (seekTarget === null || isSeeking) return;
+    // The player status updates slowly; show the target until it catches up.
+    if (Math.abs(status.currentTime - seekTarget) < 1.5) {
+      setSeekTarget(null);
+      return;
+    }
+    const timeout = setTimeout(() => setSeekTarget(null), 3000);
+    return () => clearTimeout(timeout);
+  }, [isSeeking, seekTarget, status.currentTime]);
+
   async function seekToPosition(seconds) {
     const boundedPosition = Math.max(0, Math.min(duration, seconds));
+    const request = ++seekRequestRef.current;
     setDragPosition(null);
+    setSeekTarget(boundedPosition);
+    setIsSeeking(true);
     setPlaybackError(null);
 
     try {
       await player.seekTo(boundedPosition);
     } catch (error) {
-      setPlaybackError(
-        error instanceof Error
-          ? error.message
-          : "Unable to seek in this episode.",
-      );
+      if (request === seekRequestRef.current) {
+        setSeekTarget(null);
+        setPlaybackError(
+          error instanceof Error
+            ? error.message
+            : "Unable to seek in this episode.",
+        );
+      }
+    } finally {
+      if (request === seekRequestRef.current) setIsSeeking(false);
     }
   }
 
-  function positionFromTouch(event) {
-    if (progressWidth <= 0 || duration <= 0) return null;
+  function updateScrubPosition(pageX) {
+    const { duration: totalDuration, width } = scrubMetricsRef.current;
+    if (width <= 0 || totalDuration <= 0) return;
     const ratio = Math.max(
       0,
-      Math.min(1, event.nativeEvent.locationX / progressWidth),
+      Math.min(1, (pageX - barPageXRef.current) / width),
     );
-    return ratio * duration;
+    const position = ratio * totalDuration;
+    dragPositionRef.current = position;
+    setDragPosition(position);
   }
+
+  function finishScrub(target) {
+    dragPositionRef.current = null;
+    scrubActiveRef.current = false;
+    setIsScrubbing(false);
+    unlockPageScroll();
+    if (target !== null) seekToPositionRef.current?.(target);
+    else setDragPosition(null);
+  }
+
+  seekToPositionRef.current = seekToPosition;
 
   async function togglePlayback() {
     setPlaybackError(null);
@@ -199,302 +319,360 @@ export default function PodcastPlayerScreen({ navigation, route }) {
       : null);
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    <ImageBackground
+      source={
+        isDarkMode
+          ? require("../assets/images/masot/backgroundimagequestion_darkmode.png")
+          : require("../assets/images/masot/backgroundimagequestion.png")
+      }
+      style={styles.container}
+      resizeMode="cover"
     >
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: "transparent" }]}
       >
-        <View style={styles.topBar}>
-          <TouchableOpacity
-            style={[
-              styles.backButton,
-              { backgroundColor: theme.colors.surface },
-            ]}
-            onPress={() => navigation.goBack()}
-            accessibilityRole="button"
-            accessibilityLabel="Back to episodes"
-          >
-            <MaterialCommunityIcons
-              name="chevron-down"
-              size={28}
-              color={theme.colors.text}
-            />
-          </TouchableOpacity>
-          <View style={styles.heading}>
-            <Text
-              style={[styles.channelTitle, { color: theme.colors.text }]}
-              numberOfLines={1}
-            >
-              {channel?.collectionName || "Podcast"}
-            </Text>
-          </View>
-          <View style={styles.topBarSpacer} />
-        </View>
-
-        <View
-          style={[
-            styles.transcriptPanel,
-            { backgroundColor: theme.colors.surface },
-          ]}
+        <ScrollView
+          ref={pageScrollRef}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          scrollEnabled={!isScrubbing}
+          canCancelContentTouches={!isScrubbing}
         >
-          {transcriptCues.length > 0 ? (
-            <ScrollView
-              ref={transcriptScrollRef}
-              style={styles.transcriptScroll}
-              contentContainerStyle={styles.transcriptContent}
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled
-              onLayout={(event) =>
-                setTranscriptViewportHeight(event.nativeEvent.layout.height)
-              }
+          <View style={styles.topBar}>
+            <TouchableOpacity
+              style={[styles.backButton, { backgroundColor: itemBackground }]}
+              onPress={() => navigation.goBack()}
+              accessibilityRole="button"
+              accessibilityLabel="Back to episodes"
             >
-              {transcriptCues.map((cue, index) => (
-                <Text
-                  key={`${cue.start}-${index}`}
-                  onLayout={(event) => {
-                    transcriptCueLayouts.current[index] = {
-                      y: event.nativeEvent.layout.y,
-                      height: event.nativeEvent.layout.height,
-                    };
-                    if (index === activeCueIndex) {
-                      transcriptScrollRef.current?.scrollTo({
-                        y: Math.max(
-                          0,
-                          event.nativeEvent.layout.y +
-                            event.nativeEvent.layout.height / 2 -
-                            transcriptViewportHeight / 2,
-                        ),
-                        animated: false,
-                      });
-                    }
-                  }}
-                  style={[
-                    styles.transcriptCue,
-                    {
-                      color:
-                        index === activeCueIndex
-                          ? theme.colors.primary
-                          : theme.colors.textSecondary,
-                      opacity: index === activeCueIndex ? 1 : 0.55,
-                    },
-                    index === activeCueIndex && styles.activeTranscriptCue,
-                  ]}
-                >
-                  {cue.text}
-                </Text>
-              ))}
-            </ScrollView>
-          ) : (
-            <View style={styles.transcriptMessage}>
-              {isLoadingTranscript ? (
-                <ActivityIndicator size="small" color={theme.colors.primary} />
-              ) : null}
+              <MaterialCommunityIcons
+                name="chevron-down"
+                size={28}
+                color={theme.colors.text}
+              />
+            </TouchableOpacity>
+            <View style={styles.heading}>
               <Text
-                style={[
-                  styles.transcriptPlaceholder,
-                  { color: theme.colors.textSecondary },
-                ]}
+                style={[styles.channelTitle, { color: theme.colors.text }]}
+                numberOfLines={1}
               >
-                {isLoadingTranscript
-                  ? isAutoTranscribing
-                    ? "Generating timed subtitles with AI..."
-                    : "Checking for subtitles..."
-                  : transcriptError ||
-                    "Synchronized subtitles aren't available for this episode."}
+                {channel?.collectionName || "Podcast"}
               </Text>
             </View>
-          )}
-        </View>
-
-        <View style={styles.episodeHeading}>
-          {channel?.artworkUrl600 || channel?.artworkUrl100 ? (
-            <Image
-              source={{
-                uri: channel.artworkUrl600 || channel.artworkUrl100,
-              }}
-              style={styles.podcastArtwork}
-              accessibilityLabel={`${channel?.collectionName || "Podcast"} profile picture`}
-            />
-          ) : (
-            <View
-              style={[
-                styles.podcastArtwork,
-                styles.podcastArtworkFallback,
-                { backgroundColor: theme.colors.bluePastel },
-              ]}
-            >
-              <MaterialCommunityIcons
-                name="podcast"
-                size={24}
-                color={theme.colors.blueDark}
-              />
-            </View>
-          )}
-          <View style={styles.episodeText}>
-            <Text
-              style={[styles.episodeTitle, { color: theme.colors.text }]}
-              numberOfLines={2}
-            >
-              {episode?.trackName || "Untitled episode"}
-            </Text>
-            <Text
-              style={[styles.artistName, { color: theme.colors.textSecondary }]}
-              numberOfLines={1}
-            >
-              {episode?.artistName || channel?.artistName || ""}
-            </Text>
+            <View style={styles.topBarSpacer} />
           </View>
-          <MaterialCommunityIcons
-            name="podcast"
-            size={24}
-            color={theme.colors.primary}
-          />
-        </View>
 
-        <View
-          style={styles.progressSection}
-          onLayout={(event) => setProgressWidth(event.nativeEvent.layout.width)}
-        >
           <View
-            style={styles.progressTouchArea}
-            onStartShouldSetResponder={() => duration > 0}
-            onMoveShouldSetResponder={() => duration > 0}
-            onResponderGrant={(event) =>
-              setDragPosition(positionFromTouch(event))
-            }
-            onResponderMove={(event) =>
-              setDragPosition(positionFromTouch(event))
-            }
-            onResponderRelease={() => {
-              if (dragPosition !== null) seekToPosition(dragPosition);
-            }}
-            onResponderTerminate={() => setDragPosition(null)}
-            accessibilityRole="adjustable"
-            accessibilityLabel="Episode progress"
-            accessibilityValue={{
-              min: 0,
-              max: duration,
-              now: shownPosition,
-            }}
-            accessibilityActions={[
-              { name: "increment", label: "Skip forward 15 seconds" },
-              { name: "decrement", label: "Rewind 15 seconds" },
+            style={[
+              styles.transcriptPanel,
+              { backgroundColor: itemBackground },
             ]}
-            onAccessibilityAction={(event) => {
-              const adjustment =
-                event.nativeEvent.actionName === "increment"
-                  ? SEEK_INTERVAL_SECONDS
-                  : -SEEK_INTERVAL_SECONDS;
-              seekToPosition(status.currentTime + adjustment);
-            }}
+          >
+            {transcriptCues.length > 0 ? (
+              <ScrollView
+                ref={transcriptScrollRef}
+                style={styles.transcriptScroll}
+                contentContainerStyle={styles.transcriptContent}
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
+                scrollEnabled={!isScrubbing}
+                onLayout={(event) =>
+                  setTranscriptViewportHeight(event.nativeEvent.layout.height)
+                }
+              >
+                {transcriptCues.map((cue, index) => (
+                  <Text
+                    key={`${cue.start}-${index}`}
+                    onLayout={(event) => {
+                      transcriptCueLayouts.current[index] = {
+                        y: event.nativeEvent.layout.y,
+                        height: event.nativeEvent.layout.height,
+                      };
+                      if (index === activeCueIndex) {
+                        transcriptScrollRef.current?.scrollTo({
+                          y: Math.max(
+                            0,
+                            event.nativeEvent.layout.y +
+                              event.nativeEvent.layout.height / 2 -
+                              transcriptViewportHeight / 2,
+                          ),
+                          animated: false,
+                        });
+                      }
+                    }}
+                    style={[
+                      styles.transcriptCue,
+                      {
+                        color:
+                          index === activeCueIndex
+                            ? theme.colors.primary
+                            : theme.colors.textSecondary,
+                        opacity: index === activeCueIndex ? 1 : 0.55,
+                      },
+                      index === activeCueIndex && styles.activeTranscriptCue,
+                    ]}
+                  >
+                    {cue.text}
+                  </Text>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={styles.transcriptMessage}>
+                {isLoadingTranscript ? (
+                  <ActivityIndicator
+                    size="small"
+                    color={theme.colors.primary}
+                  />
+                ) : null}
+                <Text
+                  style={[
+                    styles.transcriptPlaceholder,
+                    { color: theme.colors.textSecondary },
+                  ]}
+                >
+                  {isLoadingTranscript
+                    ? isAutoTranscribing
+                      ? "Generating timed subtitles with AI..."
+                      : "Checking for subtitles..."
+                    : transcriptError ||
+                      "Synchronized subtitles aren't available for this episode."}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.episodeHeading}>
+            {channel?.artworkUrl600 || channel?.artworkUrl100 ? (
+              <Image
+                source={{
+                  uri: channel.artworkUrl600 || channel.artworkUrl100,
+                }}
+                style={styles.podcastArtwork}
+                accessibilityLabel={`${channel?.collectionName || "Podcast"} profile picture`}
+              />
+            ) : (
+              <View
+                style={[
+                  styles.podcastArtwork,
+                  styles.podcastArtworkFallback,
+                  { backgroundColor: theme.colors.bluePastel },
+                ]}
+              >
+                <MaterialCommunityIcons
+                  name="podcast"
+                  size={24}
+                  color={theme.colors.blueDark}
+                />
+              </View>
+            )}
+            <View style={styles.episodeText}>
+              <Text
+                style={[styles.episodeTitle, { color: theme.colors.text }]}
+                numberOfLines={2}
+              >
+                {episode?.trackName || "Untitled episode"}
+              </Text>
+              <Text
+                style={[
+                  styles.artistName,
+                  { color: theme.colors.textSecondary },
+                ]}
+                numberOfLines={1}
+              >
+                {episode?.artistName || channel?.artistName || ""}
+              </Text>
+            </View>
+            <MaterialCommunityIcons
+              name="podcast"
+              size={24}
+              color={theme.colors.primary}
+            />
+          </View>
+
+          <View
+            style={styles.progressSection}
+            onLayout={(event) =>
+              setProgressWidth(event.nativeEvent.layout.width)
+            }
           >
             <View
-              style={[
-                styles.progressTrack,
-                { backgroundColor: theme.colors.border },
+              style={styles.progressTouchArea}
+              {...scrubResponder.panHandlers}
+              onTouchStart={(event) => {
+                scrubTouchRef.current = null;
+                if (
+                  scrubMetricsRef.current.duration > 0 &&
+                  scrubMetricsRef.current.width > 0
+                ) {
+                  const { pageX, pageY, locationX } = event.nativeEvent;
+                  scrubTouchRef.current = {
+                    pageX,
+                    pageY,
+                    barPageX: pageX - locationX,
+                    moved: false,
+                  };
+                }
+              }}
+              onTouchMove={(event) => {
+                const touch = scrubTouchRef.current;
+                if (!touch) return;
+                const { pageX, pageY } = event.nativeEvent;
+                if (
+                  Math.abs(pageX - touch.pageX) > TAP_MOVE_TOLERANCE ||
+                  Math.abs(pageY - touch.pageY) > TAP_MOVE_TOLERANCE
+                ) {
+                  touch.moved = true;
+                }
+              }}
+              onTouchEnd={(event) => {
+                const touch = scrubTouchRef.current;
+                scrubTouchRef.current = null;
+                if (!touch || touch.moved || scrubActiveRef.current) return;
+                const { pageX, pageY } = event.nativeEvent;
+                if (
+                  Math.abs(pageX - touch.pageX) > TAP_MOVE_TOLERANCE ||
+                  Math.abs(pageY - touch.pageY) > TAP_MOVE_TOLERANCE
+                )
+                  return;
+                barPageXRef.current = touch.barPageX;
+                updateScrubPosition(pageX);
+                finishScrub(dragPositionRef.current);
+              }}
+              onTouchCancel={() => {
+                scrubTouchRef.current = null;
+              }}
+              accessibilityRole="adjustable"
+              accessibilityLabel="Episode progress"
+              accessibilityValue={{
+                min: 0,
+                max: duration,
+                now: shownPosition,
+              }}
+              accessibilityActions={[
+                { name: "increment", label: "Skip forward 15 seconds" },
+                { name: "decrement", label: "Rewind 15 seconds" },
               ]}
+              onAccessibilityAction={(event) => {
+                const adjustment =
+                  event.nativeEvent.actionName === "increment"
+                    ? SEEK_INTERVAL_SECONDS
+                    : -SEEK_INTERVAL_SECONDS;
+                seekToPosition(status.currentTime + adjustment);
+              }}
             >
               <View
+                pointerEvents="none"
                 style={[
-                  styles.progressFill,
-                  {
-                    width: `${progress * 100}%`,
-                    backgroundColor: theme.colors.primary,
-                  },
+                  styles.progressTrack,
+                  isScrubbing && styles.progressTrackActive,
+                  { backgroundColor: theme.colors.border },
                 ]}
-              />
-              <View
-                style={[
-                  styles.progressThumb,
-                  {
-                    left: `${progress * 100}%`,
-                    backgroundColor: theme.colors.primary,
-                  },
-                ]}
-              />
+              >
+                <View
+                  style={[
+                    styles.progressFill,
+                    isScrubbing && styles.progressFillActive,
+                    {
+                      width: `${progress * 100}%`,
+                      backgroundColor: theme.colors.primary,
+                    },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.progressThumb,
+                    isScrubbing && styles.progressThumbActive,
+                    {
+                      left: `${progress * 100}%`,
+                      backgroundColor: theme.colors.primary,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+            <View style={styles.timeLabels}>
+              <Text
+                style={[styles.timeText, { color: theme.colors.textSecondary }]}
+              >
+                {formatTime(shownPosition)}
+              </Text>
+              <Text
+                style={[styles.timeText, { color: theme.colors.textSecondary }]}
+              >
+                -{formatTime(Math.max(0, duration - shownPosition))}
+              </Text>
             </View>
           </View>
-          <View style={styles.timeLabels}>
-            <Text
-              style={[styles.timeText, { color: theme.colors.textSecondary }]}
-            >
-              {formatTime(shownPosition)}
-            </Text>
-            <Text
-              style={[styles.timeText, { color: theme.colors.textSecondary }]}
-            >
-              -{formatTime(Math.max(0, duration - shownPosition))}
-            </Text>
-          </View>
-        </View>
 
-        <View style={styles.controls}>
-          <TouchableOpacity
-            style={styles.skipButton}
-            onPress={() =>
-              seekToPosition(status.currentTime - SEEK_INTERVAL_SECONDS)
-            }
-            disabled={!audioUrl || duration <= 0}
-            accessibilityRole="button"
-            accessibilityLabel="Rewind 15 seconds"
-          >
-            <MaterialCommunityIcons
-              name="rewind-15"
-              size={38}
-              color={theme.colors.text}
-            />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.playButton,
-              { backgroundColor: theme.colors.primary },
-              (!audioUrl || status.isBuffering) && styles.disabledButton,
-            ]}
-            onPress={togglePlayback}
-            disabled={!audioUrl || status.isBuffering}
-            accessibilityRole="button"
-            accessibilityLabel={
-              status.playing ? "Pause episode" : "Play episode"
-            }
-          >
-            {status.isBuffering ? (
-              <ActivityIndicator size="small" color={theme.colors.primaryText} />
-            ) : (
+          <View style={styles.controls}>
+            <TouchableOpacity
+              style={styles.skipButton}
+              onPress={() =>
+                seekToPosition(status.currentTime - SEEK_INTERVAL_SECONDS)
+              }
+              disabled={!audioUrl || duration <= 0}
+              accessibilityRole="button"
+              accessibilityLabel="Rewind 15 seconds"
+            >
               <MaterialCommunityIcons
-                name={status.playing ? "pause" : "play"}
+                name="rewind-15"
                 size={38}
-                color={theme.colors.primaryText}
+                color={theme.colors.text}
               />
-            )}
-          </TouchableOpacity>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.skipButton}
-            onPress={() =>
-              seekToPosition(status.currentTime + SEEK_INTERVAL_SECONDS)
-            }
-            disabled={!audioUrl || duration <= 0}
-            accessibilityRole="button"
-            accessibilityLabel="Fast forward 15 seconds"
-          >
-            <MaterialCommunityIcons
-              name="fast-forward-15"
-              size={38}
-              color={theme.colors.text}
-            />
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              style={[
+                styles.playButton,
+                { backgroundColor: theme.colors.primary },
+                (!audioUrl || status.isBuffering) && styles.disabledButton,
+              ]}
+              onPress={togglePlayback}
+              disabled={!audioUrl || status.isBuffering}
+              accessibilityRole="button"
+              accessibilityLabel={
+                status.playing ? "Pause episode" : "Play episode"
+              }
+            >
+              {status.isBuffering ? (
+                <ActivityIndicator
+                  size="small"
+                  color={theme.colors.primaryText}
+                />
+              ) : (
+                <MaterialCommunityIcons
+                  name={status.playing ? "pause" : "play"}
+                  size={38}
+                  color={theme.colors.primaryText}
+                />
+              )}
+            </TouchableOpacity>
 
-        {audioError ? (
-          <Text style={[styles.errorText, { color: theme.colors.orange }]}>
-            {audioError}
-          </Text>
-        ) : null}
-      </ScrollView>
-    </SafeAreaView>
+            <TouchableOpacity
+              style={styles.skipButton}
+              onPress={() =>
+                seekToPosition(status.currentTime + SEEK_INTERVAL_SECONDS)
+              }
+              disabled={!audioUrl || duration <= 0}
+              accessibilityRole="button"
+              accessibilityLabel="Fast forward 15 seconds"
+            >
+              <MaterialCommunityIcons
+                name="fast-forward-15"
+                size={38}
+                color={theme.colors.text}
+              />
+            </TouchableOpacity>
+          </View>
+
+          {audioError ? (
+            <Text style={[styles.errorText, { color: theme.colors.orange }]}>
+              {audioError}
+            </Text>
+          ) : null}
+        </ScrollView>
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 
@@ -583,7 +761,9 @@ const styles = StyleSheet.create({
   progressSection: { width: "100%" },
   progressTouchArea: { justifyContent: "center", height: 28 },
   progressTrack: { height: 4, borderRadius: 2 },
+  progressTrackActive: { height: 14, borderRadius: 7 },
   progressFill: { height: 4, borderRadius: 2 },
+  progressFillActive: { height: 14, borderRadius: 7 },
   progressThumb: {
     position: "absolute",
     top: -4,
@@ -592,6 +772,7 @@ const styles = StyleSheet.create({
     marginLeft: -6,
     borderRadius: 6,
   },
+  progressThumbActive: { top: 1 },
   timeLabels: {
     flexDirection: "row",
     justifyContent: "space-between",
