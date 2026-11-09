@@ -922,7 +922,7 @@ export async function getUserProfileByFirebaseUid(firebaseUid) {
       const status = error.response?.status;
       const message = status
         ? `Failed to load your profile (HTTP ${status}).`
-        : "Unable to connect to the profile server.";
+        : "Unable to connect to the profile server1.";
 
       throw new Error(message, { cause: error });
     }

@@ -5,7 +5,6 @@ import {
   getReactNativePersistence,
   initializeAuth,
 } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
 import { Platform } from "react-native";
 
 const firebaseConfig = {
@@ -28,7 +27,6 @@ export const isFirebaseConfigured = [
 
 let app = null;
 let auth = null;
-let db = null;
 
 if (isFirebaseConfigured) {
   app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -45,12 +43,7 @@ if (isFirebaseConfigured) {
       auth = getAuth(app);
     }
   }
-
-  try {
-    db = getFirestore(app);
-  } catch (error) {
-    console.warn("Firestore initialization warning:", error);
-  }
 }
 
-export { auth, db };
+// Only export auth since you aren't using database services
+export { auth };

@@ -71,16 +71,17 @@ export default function PodcastPlayerScreen({ navigation, route }) {
   }
   const scrubMetricsRef = useRef({ duration: 0, width: 0 });
   const seekToPositionRef = useRef(null);
-  const scrubResponder = useRef(
+const scrubResponder = useRef(
     PanResponder.create({
+      // Allow the responder to capture movement as long as a touch is active in the zone
+      onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_event, gestureState) =>
         scrubTouchRef.current !== null &&
         scrubMetricsRef.current.duration > 0 &&
         scrubMetricsRef.current.width > 0 &&
-        Math.abs(gestureState.dx) > Math.abs(gestureState.dy),
+        (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2), // Lower threshold for immediate lock-in
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: (event) => {
-        // The track ignores touches, so the touch area is the target.
         barPageXRef.current =
           event.nativeEvent.pageX - event.nativeEvent.locationX;
         scrubTouchRef.current = null;
@@ -90,7 +91,7 @@ export default function PodcastPlayerScreen({ navigation, route }) {
         setSeekTarget(null);
         updateScrubPosition(event.nativeEvent.pageX);
       },
-      // moveX is the finger's screen X, so it keeps tracking off the bar.
+      // Keeps tracking the horizontal screen position (moveX) even if the finger drifts vertically
       onPanResponderMove: (_event, gestureState) =>
         updateScrubPosition(gestureState.moveX),
       onPanResponderRelease: () => finishScrub(dragPositionRef.current),
@@ -759,7 +760,11 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   progressSection: { width: "100%" },
-  progressTouchArea: { justifyContent: "center", height: 28 },
+  progressTouchArea: { 
+    justifyContent: "center", 
+    height: 54, // Expanded hot zone for easier grabbing/drifting
+    marginVertical: -13, // Optional: negative margins to keep layout spacing intact 
+  },
   progressTrack: { height: 4, borderRadius: 2 },
   progressTrackActive: { height: 14, borderRadius: 7 },
   progressFill: { height: 4, borderRadius: 2 },

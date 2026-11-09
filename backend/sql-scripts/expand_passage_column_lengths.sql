@@ -1,0 +1,8 @@
+ALTER TABLE public.passage
+    ALTER COLUMN title TYPE TEXT,
+    ALTER COLUMN passage TYPE TEXT,
+    ALTER COLUMN image_url TYPE VARCHAR(2048),
+    ADD COLUMN IF NOT EXISTS source_url VARCHAR(2048);
+
+ALTER TABLE public.passage
+    ALTER COLUMN source_url TYPE VARCHAR(2048);

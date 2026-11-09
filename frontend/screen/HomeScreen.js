@@ -63,6 +63,7 @@ export default function HomeScreen({ navigation }) {
     try {
       setIsLoading(true);
       const userSettings = await getUserSettings(userId);
+      console.log(userSettings)
       setSettings(userSettings);
     } catch (error) {
       setErrorMessage(error.message);
@@ -115,8 +116,6 @@ export default function HomeScreen({ navigation }) {
         if (!profile?.id) {
           throw new Error("Your profile does not have a database user ID.");
         }
-        console.log("@@@@@@@@@@@@@@@@@@@@@@@@@");
-        console.log(profile);
         profileIdRef.current = profile.id;
         fetchUserSettings(profile.id);
         fetchLastReadPassage(profile.id);

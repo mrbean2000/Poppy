@@ -19,9 +19,7 @@ import {
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as AppleAuthentication from "expo-apple-authentication";
 import * as Crypto from "expo-crypto";
-import * as Facebook from "expo-auth-session/providers/facebook";
 import {
-  FacebookAuthProvider,
   OAuthProvider,
   signInWithCredential,
 } from "firebase/auth";
@@ -30,6 +28,7 @@ import { useTheme } from "../theme/ThemeContext";
 import GoogleSignInButton, {
   hasGoogleConfiguration,
 } from "../components/GoogleSignInButton";
+import FacebookSignInButton from "../components/FacebookSignInButton";
 import friendlyAuthError from "../util/friendlyAuthError";
 import { createUserProfile, createUserSettings } from "../util/http";
 
@@ -129,10 +128,6 @@ export default function CreateAccountScreen({ navigation, route }) {
     email: false,
     password: false,
     confirmPassword: false,
-  });
-  const facebookAppId = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID;
-  const [facebookRequest, , promptFacebookSignIn] = Facebook.useAuthRequest({
-    clientId: facebookAppId || "",
   });
   const titleFontSize = Math.min(42, Math.max(32, width * 0.102));
   const providerLabelFontSize = 16;
@@ -349,34 +344,6 @@ export default function CreateAccountScreen({ navigation, route }) {
           useNativeDriver: true,
         }),
       ]).start(() => navigation.navigate("TrialOffer"));
-    } catch (error) {
-      setErrorMessage(friendlyAuthError(error));
-    } finally {
-      setIsBusy(false);
-    }
-  }
-
-  async function handleFacebookSignUp() {
-    setErrorMessage(null);
-    if (!facebookAppId || !facebookRequest || !isFirebaseConfigured) {
-      setErrorMessage("Facebook sign-up is not configured for this app.");
-      return;
-    }
-
-    setIsBusy(true);
-    try {
-      const response = await promptFacebookSignIn();
-      if (response.type !== "success") return;
-      const accessToken =
-        response.authentication?.accessToken || response.params?.access_token;
-      if (!accessToken) {
-        throw new Error("Facebook did not return an access token.");
-      }
-
-      await signInWithCredential(
-        auth,
-        FacebookAuthProvider.credential(accessToken),
-      );
     } catch (error) {
       setErrorMessage(friendlyAuthError(error));
     } finally {
@@ -818,39 +785,27 @@ export default function CreateAccountScreen({ navigation, route }) {
                   </View>
                 ) : (
                   <View style={styles.providerStack}>
-                    <TouchableOpacity
-                      style={[
+                    <FacebookSignInButton
+                      containerStyle={[
                         styles.facebookButton,
                         (!isFirebaseConfigured || isBusy) &&
                           styles.disabledButton,
                       ]}
-                      onPress={handleFacebookSignUp}
+                      textStyle={[
+                        styles.facebookButtonText,
+                        { fontSize: providerLabelFontSize },
+                      ]}
                       disabled={!isFirebaseConfigured || isBusy}
-                      activeOpacity={0.78}
-                      accessibilityRole="button"
-                      accessibilityLabel="Continue with Facebook"
-                    >
-                      {isBusy ? (
-                        <ActivityIndicator color="#FFFFFF" />
-                      ) : (
-                        <>
-                          <MaterialCommunityIcons
-                            name="facebook"
-                            size={26}
-                            color="#FFFFFF"
-                          />
-                          <Text
-                            style={[
-                              styles.facebookButtonText,
-                              { fontSize: providerLabelFontSize },
-                            ]}
-                            numberOfLines={1}
-                          >
-                            Continue with Facebook
-                          </Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
+                      busy={isBusy}
+                      onStart={() => {
+                        setErrorMessage(null);
+                        setIsBusy(true);
+                      }}
+                      onFinish={() => setIsBusy(false)}
+                      onError={(error) =>
+                        setErrorMessage(friendlyAuthError(error))
+                      }
+                    />
 
                     {hasGoogleConfiguration ? (
                       <GoogleSignInButton

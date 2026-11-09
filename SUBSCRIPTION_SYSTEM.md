@@ -1,5 +1,38 @@
 # Subscription System Implementation
 
+## Optional iOS RevenueCat paywall
+
+RevenueCat is temporarily disabled in `frontend/App.js`. Re-enable its
+configuration and paywall flag there before using the setup below.
+
+The Firebase subscription flow described below remains the default and is used
+on Android and web. To use the RevenueCat paywall on iOS, set
+`EXPO_PUBLIC_REVENUECAT_IOS_ENABLED=true` and set
+`EXPO_PUBLIC_REVENUECAT_IOS_API_KEY` to the **public Apple app SDK key** from
+RevenueCat. The Test Store key is not an Apple sandbox key. Public Expo
+variables are included in the app bundle; never put Apple private keys or
+RevenueCat secret keys there. Supply these variables to the EAS build
+environment as well as local Expo development.
+
+Create Apple subscription products in App Store Connect and connect the Apple
+app in RevenueCat. Import those products, attach them to a RevenueCat
+entitlement named `premium`, add them to packages in a current offering, and
+publish a paywall for that offering. Configure prices and introductory offers
+in App Store Connect. Set up an Apple sandbox tester and install an iOS
+development build on a registered device; Expo Go does not test the native
+Apple purchase flow. See the [RevenueCat Expo guide](https://www.revenuecat.com/docs/getting-started/installation/expo)
+and [Apple sandbox guide](https://www.revenuecat.com/docs/test-and-launch/sandbox/apple-app-store).
+
+When enabled, the app identifies the RevenueCat customer using the signed-in
+Firebase UID, presents the current offering when `premium` is inactive, and
+allows restoring purchases or signing out. Dismissing the paywall does not grant
+access. Access changes are driven by RevenueCat customer information, not the
+legacy Firebase claims, Firestore data, or the simulated trial screen. Existing
+Firebase-only subscriptions therefore need an explicit migration or matching
+RevenueCat entitlement before enabling this option for those users. Restore
+behavior across app accounts depends on the project's RevenueCat restore
+settings. Backend authorization, if required, must independently verify access.
+
 ## Overview
 
 The app now automatically navigates users to either the Trial Offer screen or Home screen based on their subscription status when they sign in.

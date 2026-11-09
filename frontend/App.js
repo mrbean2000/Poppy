@@ -35,8 +35,16 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Asset } from "expo-asset";
 import * as SplashScreen from "expo-splash-screen";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+// import { Platform } from "react-native";
+// import Purchases, { LOG_LEVEL } from 'react-native-purchases';
+import RevenueCatGate from "./components/RevenueCatGate";
 
 const Stack = createNativeStackNavigator();
+// RevenueCat is temporarily disabled, including when its environment flag is set.
+const useRevenueCatPaywall = false;
+// const useRevenueCatPaywall =
+//   Platform.OS === "ios" &&
+//   process.env.EXPO_PUBLIC_REVENUECAT_IOS_ENABLED === "true";
 
 SplashScreen.preventAutoHideAsync().catch((error) => {
   console.warn("Unable to keep the native splash screen visible:", error);
@@ -54,6 +62,13 @@ function AppNavigation() {
     : "Login";
 
   useEffect(() => {
+
+    // if (!useRevenueCatPaywall) {
+    //   Purchases.setLogLevel(LOG_LEVEL.VERBOSE);
+    //   const apiKey = process.env.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY;
+    //   Purchases.configure({ apiKey });
+    // }
+
     let isCurrent = true;
 
     Asset.loadAsync([
@@ -87,6 +102,11 @@ function AppNavigation() {
       return undefined;
     }
 
+    if (useRevenueCatPaywall) {
+      setSubscriptionRoute({ uid: user.uid, route: "Home" });
+      return undefined;
+    }
+
     let isCurrent = true;
     const uid = user.uid;
 
@@ -110,7 +130,7 @@ function AppNavigation() {
   // Wait for the subscription check so the navigator mounts with a valid initial route
   if (isLoading || !areBackgroundImagesReady || !initialRouteName) return null;
 
-  return (
+  const navigation = (
     <NavigationContainer
       onReady={() => {
         SplashScreen.hideAsync().catch((error) => {
@@ -132,7 +152,7 @@ function AppNavigation() {
             />
             <Stack.Screen
               name="TrialOffer"
-              component={TrialOfferScreen}
+              component={useRevenueCatPaywall ? HomeScreen : TrialOfferScreen}
               options={{
                 headerShown: false,
                 gestureEnabled: false,
@@ -328,7 +348,7 @@ function AppNavigation() {
             />
             <Stack.Screen
               name="TrialOffer"
-              component={TrialOfferScreen}
+              component={useRevenueCatPaywall ? LoginScreen : TrialOfferScreen}
               options={{ headerShown: false, gestureEnabled: false }}
             />
           </>
@@ -336,6 +356,14 @@ function AppNavigation() {
       </Stack.Navigator>
       {user ? <PodcastMiniPlayer /> : null}
     </NavigationContainer>
+  );
+
+  return useRevenueCatPaywall && user ? (
+    <RevenueCatGate key={user.uid} user={user}>
+      {navigation}
+    </RevenueCatGate>
+  ) : (
+    navigation
   );
 }
 

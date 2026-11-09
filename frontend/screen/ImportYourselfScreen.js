@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { useCallback, useRef, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
+import useContentSwipeBack from "../hooks/useContentSwipeBack";
 import { useTheme } from "../theme/ThemeContext";
 import { createPassageFromText } from "../util/http";
 
@@ -27,6 +28,9 @@ export default function ImportYourselfScreen({ navigation }) {
   const contentOpacity = useRef(new Animated.Value(0)).current;
   const contentOffset = useRef(new Animated.Value(20)).current;
   const backPressScale = useRef(new Animated.Value(1)).current;
+  const { swipeOffset, swipeResponder, isNavigatingBack } =
+    useContentSwipeBack(navigation);
+  const backTimer = useRef(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -48,7 +52,10 @@ export default function ImportYourselfScreen({ navigation }) {
 
       animation.start();
 
-      return () => animation.stop();
+      return () => {
+        animation.stop();
+        clearTimeout(backTimer.current);
+      };
     }, [contentOffset, contentOpacity]),
   );
 
@@ -71,8 +78,10 @@ export default function ImportYourselfScreen({ navigation }) {
   }
 
   function goBack() {
+    if (isNavigatingBack.current) return;
+    isNavigatingBack.current = true;
     animateBackPressIn();
-    setTimeout(() => {
+    backTimer.current = setTimeout(() => {
       Animated.parallel([
         Animated.timing(contentOpacity, {
           toValue: 0,
@@ -84,7 +93,10 @@ export default function ImportYourselfScreen({ navigation }) {
           duration: 170,
           useNativeDriver: true,
         }),
-      ]).start(() => navigation.goBack());
+      ]).start(({ finished }) => {
+        if (finished) navigation.goBack();
+        else isNavigatingBack.current = false;
+      });
     }, 110);
   }
 
@@ -142,7 +154,7 @@ export default function ImportYourselfScreen({ navigation }) {
       style={styles.container}
       resizeMode="cover"
     >
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} {...swipeResponder.panHandlers}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -152,7 +164,7 @@ export default function ImportYourselfScreen({ navigation }) {
             styles.flex,
             {
               opacity: contentOpacity,
-              transform: [{ translateX: contentOffset }],
+              transform: [{ translateX: Animated.add(contentOffset, swipeOffset) }],
             },
           ]}
         >
@@ -177,7 +189,7 @@ export default function ImportYourselfScreen({ navigation }) {
             Import Yourself
           </Text>
           <Text
-            style={[styles.subtitle, { color: theme.colors.textSecondary }]}
+            style={[styles.subtitle, { color: theme.colors.text }]}
           >
             Add your own passage to start learning.
           </Text>
@@ -188,7 +200,7 @@ export default function ImportYourselfScreen({ navigation }) {
               value={title}
               onChangeText={setTitle}
               placeholder="Paste a title"
-              placeholderTextColor={theme.colors.textSecondary}
+              placeholderTextColor={theme.colors.text}
               style={[
                 styles.input,
                 {
@@ -201,7 +213,7 @@ export default function ImportYourselfScreen({ navigation }) {
               value={imageUrl}
               onChangeText={setImageUrl}
               placeholder="Paste an image URL (optional)"
-              placeholderTextColor={theme.colors.textSecondary}
+              placeholderTextColor={theme.colors.text}
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="url"
@@ -217,7 +229,7 @@ export default function ImportYourselfScreen({ navigation }) {
               value={passage}
               onChangeText={setPassage}
               placeholder="Paste the passage"
-              placeholderTextColor={theme.colors.textSecondary}
+              placeholderTextColor={theme.colors.text}
               multiline
               textAlignVertical="top"
               style={[

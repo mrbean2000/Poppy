@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useCallback, useRef, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
+import useContentSwipeBack from "../hooks/useContentSwipeBack";
 import { useTheme } from "../theme/ThemeContext";
 import { createPassage } from "../util/http";
 
@@ -22,6 +23,9 @@ export default function ImportUrlScreen({ navigation }) {
   const contentOpacity = useRef(new Animated.Value(0)).current;
   const contentOffset = useRef(new Animated.Value(20)).current;
   const backPressScale = useRef(new Animated.Value(1)).current;
+  const { swipeOffset, swipeResponder, isNavigatingBack } =
+    useContentSwipeBack(navigation);
+  const backTimer = useRef(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -43,7 +47,10 @@ export default function ImportUrlScreen({ navigation }) {
 
       animation.start();
 
-      return () => animation.stop();
+      return () => {
+        animation.stop();
+        clearTimeout(backTimer.current);
+      };
     }, [contentOffset, contentOpacity]),
   );
 
@@ -66,8 +73,10 @@ export default function ImportUrlScreen({ navigation }) {
   }
 
   function goBack() {
+    if (isNavigatingBack.current) return;
+    isNavigatingBack.current = true;
     animateBackPressIn();
-    setTimeout(() => {
+    backTimer.current = setTimeout(() => {
       Animated.parallel([
         Animated.timing(contentOpacity, {
           toValue: 0,
@@ -79,7 +88,10 @@ export default function ImportUrlScreen({ navigation }) {
           duration: 170,
           useNativeDriver: true,
         }),
-      ]).start(() => navigation.goBack());
+      ]).start(({ finished }) => {
+        if (finished) navigation.goBack();
+        else isNavigatingBack.current = false;
+      });
     }, 110);
   }
 
@@ -136,13 +148,13 @@ export default function ImportUrlScreen({ navigation }) {
       style={styles.container}
       resizeMode="cover"
     >
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} {...swipeResponder.panHandlers}>
         <Animated.View
           style={[
             styles.content,
             {
               opacity: contentOpacity,
-              transform: [{ translateX: contentOffset }],
+              transform: [{ translateX: Animated.add(contentOffset, swipeOffset) }],
             },
           ]}
         >
@@ -166,7 +178,7 @@ export default function ImportUrlScreen({ navigation }) {
             Import via URL
           </Text>
           <Text
-            style={[styles.subtitle, { color: theme.colors.textSecondary }]}
+            style={[styles.subtitle, { color: theme.colors.text }]}
           >
             Paste an article URL to import passage.
           </Text>
@@ -177,7 +189,7 @@ export default function ImportUrlScreen({ navigation }) {
               value={url}
               onChangeText={setUrl}
               placeholder="Paste an article URL"
-              placeholderTextColor={theme.colors.textSecondary}
+              placeholderTextColor={theme.colors.text}
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="url"

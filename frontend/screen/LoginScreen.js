@@ -5,10 +5,10 @@ import {
   Alert,
   Image,
   ImageBackground,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -25,6 +25,7 @@ import { useTheme } from "../theme/ThemeContext";
 import GoogleSignInButton, {
   hasGoogleConfiguration,
 } from "../components/GoogleSignInButton";
+import FacebookSignInButton from "../components/FacebookSignInButton";
 import friendlyAuthError from "../util/friendlyAuthError";
 
 const welcomeMascotImages = [
@@ -34,7 +35,7 @@ const welcomeMascotImages = [
 ];
 
 export default function LoginScreen({ navigation }) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const { theme } = useTheme();
   const {
     auth,
@@ -52,14 +53,18 @@ export default function LoginScreen({ navigation }) {
   );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
   const [appleAvailable, setAppleAvailable] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   const titleFontSize = Math.min(42, Math.max(32, width * 0.102));
+  const compactLayout = height < 750;
   const screenTransition = useRef(new Animated.Value(1)).current;
   const transitionDirection = useRef(1);
   const transitionAnimation = useRef(null);
+  const resetInProgress = useRef(false);
 
   function animateScreenChange(updateScreen, direction, duration = 240) {
     transitionAnimation.current?.stop();
@@ -73,6 +78,19 @@ export default function LoginScreen({ navigation }) {
     });
     transitionAnimation.current.start();
   }
+
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const show = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
+    const hide = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (Platform.OS !== "ios") return undefined;
@@ -149,20 +167,40 @@ export default function LoginScreen({ navigation }) {
   }
 
   async function handlePasswordReset() {
+    if (resetInProgress.current || !isFirebaseConfigured) return;
+    setErrorMessage(null);
     if (!email.trim()) {
-      setErrorMessage("Enter your email address first.");
+      setErrorMessage("Enter your email address.");
       return;
     }
-    setErrorMessage(null);
+    resetInProgress.current = true;
     setIsBusy(true);
+    const showConfirmation = () => {
+      Keyboard.dismiss();
+      Alert.alert(
+        "Check your email",
+        "If an account exists for this email, you may receive a password reset link. Check your spam folder too.",
+      );
+    };
     try {
       await sendPasswordReset(email);
-      Alert.alert("Check your email", "We sent you a password reset link.");
+      showConfirmation();
     } catch (error) {
-      setErrorMessage(friendlyAuthError(error));
+      if (error?.code === "auth/user-not-found") {
+        showConfirmation();
+      } else {
+        setErrorMessage(friendlyAuthError(error));
+      }
     } finally {
+      resetInProgress.current = false;
       setIsBusy(false);
     }
+  }
+
+  function returnToSignIn() {
+    Keyboard.dismiss();
+    setErrorMessage(null);
+    setShowPasswordReset(false);
   }
 
   const transitionStyle = {
@@ -255,6 +293,112 @@ export default function LoginScreen({ navigation }) {
     );
   }
 
+  if (showPasswordReset) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <ImageBackground
+          source={require("../assets/images/masot/backgroundimagequestion.png")}
+          style={styles.loginBackground}
+          imageStyle={styles.loginBackgroundImage}
+          resizeMode="cover"
+          accessible={false}
+        />
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <View style={styles.topBar}>
+            <TouchableOpacity
+              style={styles.welcomeBackButton}
+              onPress={returnToSignIn}
+              disabled={isBusy}
+              accessibilityRole="button"
+              accessibilityLabel="Back to sign in"
+            >
+              <MaterialCommunityIcons name="arrow-left" size={24} color="#203B32" />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.content}>
+            <View style={styles.formContent}>
+              <Text
+                style={[
+                  styles.title,
+                  { fontSize: titleFontSize, lineHeight: titleFontSize * 1.1 },
+                ]}
+              >
+                Reset password
+              </Text>
+              <Text style={styles.resetDescription}>
+                Enter your email address and we&apos;ll send you a link to reset
+                your password.
+              </Text>
+              <View style={styles.inputRow}>
+                <MaterialCommunityIcons
+                  name="email-outline"
+                  size={24}
+                  color="#805B3E"
+                />
+                <TextInput
+                  style={styles.input}
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="Email address"
+                  placeholderTextColor="#A98768"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="email"
+                  textContentType="emailAddress"
+                  returnKeyType="send"
+                  onSubmitEditing={handlePasswordReset}
+                  editable={isFirebaseConfigured && !isBusy}
+                  accessibilityLabel="Email address"
+                />
+              </View>
+              {errorMessage ? (
+                <Text
+                  accessibilityRole="alert"
+                  style={[styles.error, { color: theme.colors.danger }]}
+                >
+                  {errorMessage}
+                </Text>
+              ) : null}
+              {!isFirebaseConfigured ? (
+                <Text style={[styles.error, { color: theme.colors.danger }]}>
+                  Firebase is not configured. Configure it before resetting your password.
+                </Text>
+              ) : null}
+              <TouchableOpacity
+                style={[
+                  styles.submitButton,
+                  { backgroundColor: theme.colors.primary },
+                  (!isFirebaseConfigured || isBusy) && styles.disabledButton,
+                ]}
+                onPress={handlePasswordReset}
+                disabled={!isFirebaseConfigured || isBusy}
+                accessibilityRole="button"
+                accessibilityLabel="Send password reset link"
+              >
+                {isBusy ? (
+                  <ActivityIndicator color={theme.colors.primaryText} />
+                ) : (
+                  <Text
+                    style={[
+                      styles.submitButtonText,
+                      { color: theme.colors.primaryText },
+                    ]}
+                  >
+                    Send reset link
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={[styles.safeArea]}>
       <ImageBackground
@@ -293,13 +437,11 @@ export default function LoginScreen({ navigation }) {
               />
             </TouchableOpacity>
           </View>
-          <ScrollView
-            contentContainerStyle={styles.content}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
+          <View style={[styles.content, compactLayout && styles.compactContent]}>
             <View style={styles.formContent}>
-              <View style={styles.heading}>
+              <View
+                style={[styles.heading, compactLayout && styles.compactHeading]}
+              >
                 <Text
                   style={[
                     styles.title,
@@ -340,7 +482,9 @@ export default function LoginScreen({ navigation }) {
 
               <View style={styles.formActions}>
                 <View style={styles.form}>
-                  <View style={styles.inputRow}>
+                  <View
+                    style={[styles.inputRow, compactLayout && styles.compactInputRow]}
+                  >
                     <MaterialCommunityIcons
                       name="email-outline"
                       size={24}
@@ -361,7 +505,9 @@ export default function LoginScreen({ navigation }) {
                     />
                   </View>
 
-                  <View style={styles.inputRow}>
+                  <View
+                    style={[styles.inputRow, compactLayout && styles.compactInputRow]}
+                  >
                     <MaterialCommunityIcons
                       name="lock-outline"
                       size={24}
@@ -400,7 +546,11 @@ export default function LoginScreen({ navigation }) {
 
                   <TouchableOpacity
                     style={styles.forgotButton}
-                    onPress={handlePasswordReset}
+                    onPress={() => {
+                      Keyboard.dismiss();
+                      setErrorMessage(null);
+                      setShowPasswordReset(true);
+                    }}
                     disabled={!isFirebaseConfigured || isBusy}
                     accessibilityRole="button"
                   >
@@ -418,6 +568,7 @@ export default function LoginScreen({ navigation }) {
                   <TouchableOpacity
                     style={[
                       styles.submitButton,
+                      compactLayout && styles.compactButton,
                       { backgroundColor: theme.colors.primary },
                       (!isFirebaseConfigured || isBusy) &&
                         styles.disabledButton,
@@ -441,7 +592,11 @@ export default function LoginScreen({ navigation }) {
                   </TouchableOpacity>
                 </View>
 
-                <View style={styles.dividerRow}>
+                {!keyboardVisible && (
+                <View>
+                <View
+                  style={[styles.dividerRow, compactLayout && styles.compactDividerRow]}
+                >
                   <View style={styles.divider} />
                   <Text style={styles.orText}>OR CONTINUE WITH</Text>
                   <View style={styles.divider} />
@@ -450,7 +605,10 @@ export default function LoginScreen({ navigation }) {
                 {hasGoogleConfiguration ? (
                   <GoogleSignInButton
                     disabled={!isFirebaseConfigured || isBusy}
-                    containerStyle={styles.googleProviderButton}
+                    containerStyle={[
+                      styles.googleProviderButton,
+                      compactLayout && styles.compactButton,
+                    ]}
                     textStyle={styles.providerButtonText}
                     iconStyle={styles.providerIcon}
                     onStart={() => {
@@ -473,10 +631,30 @@ export default function LoginScreen({ navigation }) {
                   </Text>
                 )}
 
+                <FacebookSignInButton
+                  disabled={!isFirebaseConfigured || isBusy}
+                  busy={isBusy}
+                  containerStyle={[
+                    styles.facebookProviderButton,
+                    compactLayout && styles.compactProviderButton,
+                    (!isFirebaseConfigured || isBusy) && styles.disabledButton,
+                  ]}
+                  textStyle={styles.facebookProviderText}
+                  onStart={() => {
+                    setErrorMessage(null);
+                    setIsBusy(true);
+                  }}
+                  onFinish={() => setIsBusy(false)}
+                  onError={(error) => setErrorMessage(friendlyAuthError(error))}
+                />
+
                 {Platform.OS === "ios" && isFirebaseConfigured ? (
                   appleAvailable ? (
                     <TouchableOpacity
-                      style={styles.appleButton}
+                      style={[
+                        styles.appleButton,
+                        compactLayout && styles.compactProviderButton,
+                      ]}
                       onPress={handleAppleSignIn}
                       accessibilityRole="button"
                     >
@@ -500,9 +678,11 @@ export default function LoginScreen({ navigation }) {
                     </Text>
                   )
                 ) : null}
+                </View>
+                )}
               </View>
             </View>
-          </ScrollView>
+          </View>
         </KeyboardAvoidingView>
       </Animated.View>
     </SafeAreaView>
@@ -596,20 +776,19 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   content: {
-    flexGrow: 1,
+    flex: 1,
     alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 28,
-    paddingTop: 26,
-    paddingBottom: 30,
+    paddingVertical: 12,
   },
+  compactContent: { paddingVertical: 4 },
   formContent: {
-    flexGrow: 1,
     width: "100%",
     maxWidth: 460,
-    marginTop: "40%",
-    paddingTop: 20,
   },
-  heading: { width: "100%", marginBottom: "10%" },
+  heading: { width: "100%", marginBottom: 24 },
+  compactHeading: { marginBottom: 8 },
   formActions: { width: "100%" },
   brandIcon: {
     width: 70,
@@ -639,6 +818,13 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
     textAlign: "center",
   },
+  resetDescription: {
+    color: "#153D32",
+    fontSize: 16,
+    lineHeight: 23,
+    marginBottom: 24,
+    textAlign: "center",
+  },
   configurationNotice: {
     marginBottom: 18,
     padding: 14,
@@ -657,6 +843,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: "#FFFDF9",
   },
+  compactInputRow: { marginBottom: 6 },
   input: {
     flex: 1,
     minHeight: 54,
@@ -674,6 +861,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
     borderRadius: 23,
   },
+  compactButton: { minHeight: 48 },
   disabledButton: { opacity: 0.5 },
   submitButtonText: { fontSize: 18, fontWeight: "700" },
   dividerRow: {
@@ -682,6 +870,7 @@ const styles = StyleSheet.create({
     marginTop: 28,
     marginBottom: 16,
   },
+  compactDividerRow: { marginTop: 12, marginBottom: 8 },
   divider: { flex: 1, height: 1, backgroundColor: "#B8B7A3" },
   orText: {
     marginHorizontal: 10,
@@ -702,6 +891,13 @@ const styles = StyleSheet.create({
     borderRadius: 23,
     backgroundColor: "#FFFEFA",
   },
+  facebookProviderButton: {
+    minHeight: 66,
+    marginTop: 16,
+    borderRadius: 23,
+  },
+  compactProviderButton: { minHeight: 48, marginTop: 8 },
+  facebookProviderText: { fontSize: 18, fontWeight: "700" },
   providerButtonText: {
     color: "#153D32",
     fontSize: 18,

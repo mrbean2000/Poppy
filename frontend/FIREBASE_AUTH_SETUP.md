@@ -23,14 +23,26 @@ credentials or private OAuth secrets in the frontend.
    Login product. Add the Facebook App ID to
    `EXPO_PUBLIC_FACEBOOK_APP_ID` in `frontend/.env`, and configure the OAuth
    redirect URI shown by Firebase in the Facebook app. Keep the Facebook App
-   Secret in Firebase, never in the frontend environment.
+   Secret in Firebase, never in the frontend environment. The Expo AuthSession
+   flow also needs its own redirect configured: for native development builds,
+   the Facebook provider uses `fb<Facebook App ID>://authorize`, and the app
+   must register the corresponding `fb<Facebook App ID>` URL scheme. Configure
+   the applicable redirect in Meta and rebuild after changing native schemes.
 7. Restart Expo after changing `.env` so the public variables are loaded.
 
 Google, Apple, and Facebook Firebase sign-in automatically create a Firebase
 account the first time a provider is used. Existing email/password users can
 sign in on the login screen, and password reset sends a Firebase reset email.
+Facebook sign-in is available on both the login and create-account screens.
 Signing in is required to enter the app, and the Settings screen provides
 sign-out.
+
+For password recovery, enable the Email/Password provider and configure the
+password reset email template in **Authentication → Templates**. On the login
+screen, choose **Forgot password?**, enter the account email, and use the link
+in the Firebase email to set a new password. The confirmation does not disclose
+whether an account exists; check the spam folder if the email does not arrive.
+Accounts using only a social provider should continue using that provider.
 
 The existing Spring API still uses its existing numeric user IDs. Firebase
 authentication does not yet link a Firebase UID to those backend users, so

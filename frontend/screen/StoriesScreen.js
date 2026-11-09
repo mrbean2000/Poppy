@@ -7,12 +7,13 @@ import {
   TouchableOpacity,
   View,
   Image,
+  ImageBackground,
 } from "react-native";
 import { getAllPassage } from "../util/http";
 import { useTheme } from "../theme/ThemeContext";
 
 export default function StoriesScreen({ navigation }) {
-  const { theme } = useTheme();
+  const { theme, isDarkMode } = useTheme();
   const [stories, setStories] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
@@ -34,9 +35,16 @@ export default function StoriesScreen({ navigation }) {
   }, []);
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    <ImageBackground
+      source={
+        isDarkMode
+          ? require("../assets/images/masot/backgroundimagequestion_darkmode.png")
+          : require("../assets/images/masot/backgroundimagequestion.png")
+      }
+      style={styles.container}
+      resizeMode="cover"
     >
+      <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -112,14 +120,14 @@ export default function StoriesScreen({ navigation }) {
             </TouchableOpacity>
           ))}
       </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F7F7F7",
   },
   content: {
     padding: 20,
