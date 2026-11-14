@@ -604,7 +604,7 @@ export default function CreateAccountScreen({ navigation, route }) {
                         autoCapitalize="words"
                         autoComplete="name"
                         textContentType="givenName"
-                        editable={isFirebaseConfigured && !isBusy}
+                        editable={true}
                         accessibilityLabel="First name"
                       />
                     </View>
@@ -631,7 +631,7 @@ export default function CreateAccountScreen({ navigation, route }) {
                         autoCapitalize="words"
                         autoComplete="name"
                         textContentType="familyName"
-                        editable={isFirebaseConfigured && !isBusy}
+                        editable={true}
                         accessibilityLabel="Last name"
                       />
                     </View>
@@ -659,7 +659,7 @@ export default function CreateAccountScreen({ navigation, route }) {
                         autoCapitalize="none"
                         autoComplete="email"
                         textContentType="emailAddress"
-                        editable={isFirebaseConfigured && !isBusy}
+                        editable={true}
                         accessibilityLabel="Email address"
                       />
                     </View>
@@ -686,7 +686,7 @@ export default function CreateAccountScreen({ navigation, route }) {
                         secureTextEntry={!isPasswordVisible}
                         autoComplete="new-password"
                         textContentType="newPassword"
-                        editable={isFirebaseConfigured && !isBusy}
+                        editable={true}
                         accessibilityLabel="Password"
                       />
                       <TouchableOpacity
@@ -732,7 +732,7 @@ export default function CreateAccountScreen({ navigation, route }) {
                         secureTextEntry={!isConfirmPasswordVisible}
                         autoComplete="new-password"
                         textContentType="newPassword"
-                        editable={isFirebaseConfigured && !isBusy}
+                        editable={true}
                         accessibilityLabel="Confirm password"
                       />
                       <TouchableOpacity

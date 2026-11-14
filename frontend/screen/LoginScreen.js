@@ -351,7 +351,7 @@ export default function LoginScreen({ navigation }) {
                   textContentType="emailAddress"
                   returnKeyType="send"
                   onSubmitEditing={handlePasswordReset}
-                  editable={isFirebaseConfigured && !isBusy}
+                  editable={true}
                   accessibilityLabel="Email address"
                 />
               </View>
@@ -500,7 +500,7 @@ export default function LoginScreen({ navigation }) {
                       autoCapitalize="none"
                       autoComplete="email"
                       textContentType="emailAddress"
-                      editable={isFirebaseConfigured && !isBusy}
+                      editable={true}
                       accessibilityLabel="Email address"
                     />
                   </View>
@@ -522,7 +522,7 @@ export default function LoginScreen({ navigation }) {
                       secureTextEntry={!isPasswordVisible}
                       autoComplete="current-password"
                       textContentType="password"
-                      editable={isFirebaseConfigured && !isBusy}
+                      editable={true}
                       accessibilityLabel="Password"
                     />
                     <TouchableOpacity
