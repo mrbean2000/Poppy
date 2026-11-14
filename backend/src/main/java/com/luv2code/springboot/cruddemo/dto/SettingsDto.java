@@ -14,6 +14,9 @@ public class SettingsDto {
     private Integer dailyListeningGoal;
     private LocalDate dateOfBirth;
     private Boolean practiceRemindersEnabled;
+    private String profilePictureUrl;
+    private boolean profilePictureUrlProvided;
+    private Boolean homeWalkthroughCompleted;
 
     public int getUser_id() {
         return user_id;
@@ -77,5 +80,26 @@ public class SettingsDto {
 
     public void setPracticeRemindersEnabled(Boolean practiceRemindersEnabled) {
         this.practiceRemindersEnabled = practiceRemindersEnabled;
+    }
+
+    public String getProfilePictureUrl() {
+        return profilePictureUrl;
+    }
+
+    public void setProfilePictureUrl(String profilePictureUrl) {
+        this.profilePictureUrl = profilePictureUrl;
+        this.profilePictureUrlProvided = true;
+    }
+
+    public boolean hasProfilePictureUrl() {
+        return profilePictureUrlProvided;
+    }
+
+    public Boolean getHomeWalkthroughCompleted() {
+        return homeWalkthroughCompleted;
+    }
+
+    public void setHomeWalkthroughCompleted(Boolean homeWalkthroughCompleted) {
+        this.homeWalkthroughCompleted = homeWalkthroughCompleted;
     }
 }

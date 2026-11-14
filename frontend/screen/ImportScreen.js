@@ -18,11 +18,13 @@ import {
   RotateCcw,
 } from "lucide-react-native";
 import { useTheme } from "../theme/ThemeContext";
+import { useWalkthroughScreen, WalkthroughStep, WalkthroughTouchable } from "../context/HomeWalkthroughContext";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 export default function ImportScreen({ navigation, route }) {
   const { theme, isDarkMode } = useTheme();
+  const { track } = useWalkthroughScreen("Import");
   const [showCamera, setShowCamera] = useState(false);
   const [facing, setFacing] = useState("back");
   const [isCapturing, setIsCapturing] = useState(false);
@@ -158,7 +160,9 @@ export default function ImportScreen({ navigation, route }) {
             Import passage to start learning.
           </Text>
           <View style={styles.buttonGroup}>
-            <TouchableOpacity
+            <WalkthroughStep name="importUrl">
+            <WalkthroughTouchable
+              onLayout={track("importUrl")}
               style={[styles.button, { backgroundColor: theme.colors.primary }]}
               onPress={() => navigation.navigate("ImportUrl")}
             >
@@ -167,7 +171,8 @@ export default function ImportScreen({ navigation, route }) {
               >
                 Import via URL
               </Text>
-            </TouchableOpacity>
+            </WalkthroughTouchable>
+            </WalkthroughStep>
             <TouchableOpacity
               style={[styles.button, { backgroundColor: theme.colors.blue }]}
               onPress={() => navigation.navigate("ImportYourself")}

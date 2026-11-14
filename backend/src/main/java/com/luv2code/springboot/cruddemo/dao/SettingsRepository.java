@@ -12,6 +12,8 @@ public interface SettingsRepository extends JpaRepository<Settings, Integer> {
 			"settings.nativelanguageid, settings.targetlanguageid, " +
 			"settings.dailyReadingGoal, settings.dailyListeningGoal, " +
 			"settings.dateOfBirth, settings.practiceRemindersEnabled, " +
+			"settings.profilePictureUrl, " +
+			"settings.homeWalkthroughCompleted, " +
 			"nativeLanguage.language, targetLanguage.language, " +
 			"nativeLanguage.countryFlag, targetLanguage.countryFlag) " +
 			"from Settings settings " +

@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import HomeScreen from "./screen/HomeScreen";
 import LanguageSelectionScreen from "./screen/LanguageSelectionScreen";
 import ReaderScreen from "./screen/ReaderScreen";
 import SettingsScreen from "./screen/SettingScreen";
+import ProfilePictureScreen from "./screen/ProfilePictureScreen";
+import DeleteAccountScreen from "./screen/DeleteAccountScreen";
 import StoriesScreen from "./screen/StoriesScreen";
 import MyVocabularyScreen from "./screen/MyVocabularyScreen";
 import VocabularyDetailScreen from "./screen/VocabularyDetailScreen";
@@ -14,10 +16,13 @@ import ImportCameraScreen from "./screen/ImportCameraScreen";
 import PodcastScreen from "./screen/PodcastScreen";
 import PodcastEpisodesScreen from "./screen/PodcastEpisodesScreen";
 import PodcastPlayerScreen from "./screen/PodcastPlayerScreen";
+import RecentHistoryScreen from "./screen/RecentHistoryScreen";
 import PodcastMiniPlayer from "./components/PodcastMiniPlayer";
 import { PodcastPlaybackProvider } from "./components/PodcastPlaybackContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { OnboardingSelectionProvider } from "./context/OnboardingSelectionContext";
+import { HomeWalkthroughProvider } from "./context/HomeWalkthroughContext";
+import { HomePanelContext } from "./context/HomePanelContext";
 import LoginScreen from "./screen/LoginScreen";
 import CreateAccountScreen from "./screen/CreateAccountScreen";
 import OnboardingDailyReadingGoalScreen from "./screen/OnboardingDailyReadingGoalScreen";
@@ -30,7 +35,7 @@ import OnboardingReminderScreen from "./screen/OnboardingReminderScreen";
 import TrialOfferScreen from "./screen/TrialOfferScreen";
 import TrialStartedScreen from "./screen/TrialStartedScreen";
 import { ThemeProvider } from "./theme/ThemeContext";
-import { NavigationContainer } from "@react-navigation/native";
+import { createNavigationContainerRef, NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Asset } from "expo-asset";
 import * as SplashScreen from "expo-splash-screen";
@@ -40,6 +45,27 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import RevenueCatGate from "./components/RevenueCatGate";
 
 const Stack = createNativeStackNavigator();
+const miniPlayerRoutes = new Set([
+  "Home",
+  "Podcast",
+  "PodcastEpisodes",
+  "PodcastPlayer",
+  "RecentPodcasts",
+  "RecentArticles",
+  "Reader",
+  "Stories",
+  "Settings",
+  "ProfilePicture",
+  "DeleteAccount",
+  "LanguageSelection",
+  "Vocabulary",
+  "VocabularyDetail",
+  "Flashcards",
+  "Import",
+  "ImportUrl",
+  "ImportYourself",
+  "ImportCamera",
+]);
 // RevenueCat is temporarily disabled, including when its environment flag is set.
 const useRevenueCatPaywall = false;
 // const useRevenueCatPaywall =
@@ -52,9 +78,12 @@ SplashScreen.preventAutoHideAsync().catch((error) => {
 
 function AppNavigation() {
   const { user, isLoading, checkSubscriptionStatus } = useAuth();
+  const navigationRef = useRef(createNavigationContainerRef()).current;
   const [areBackgroundImagesReady, setAreBackgroundImagesReady] =
     useState(false);
   const [subscriptionRoute, setSubscriptionRoute] = useState(null);
+  const [activeRoute, setActiveRoute] = useState(null);
+  const [homePanelOpen, setHomePanelOpen] = useState(false);
   const initialRouteName = user
     ? subscriptionRoute?.uid === user.uid
       ? subscriptionRoute.route
@@ -132,10 +161,15 @@ function AppNavigation() {
 
   const navigation = (
     <NavigationContainer
+      ref={navigationRef}
       onReady={() => {
+        setActiveRoute(navigationRef.getCurrentRoute()?.name);
         SplashScreen.hideAsync().catch((error) => {
           console.warn("Unable to hide the native splash screen:", error);
         });
+      }}
+      onStateChange={() => {
+        setActiveRoute(navigationRef.getCurrentRoute()?.name);
       }}
     >
       <Stack.Navigator
@@ -179,6 +213,16 @@ function AppNavigation() {
               options={{ headerShown: false }}
             />
             <Stack.Screen
+              name="RecentPodcasts"
+              component={RecentHistoryScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="RecentArticles"
+              component={RecentHistoryScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
               name="PodcastPlayer"
               component={PodcastPlayerScreen}
               options={{
@@ -203,6 +247,16 @@ function AppNavigation() {
             <Stack.Screen
               name="Settings"
               component={SettingsScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="ProfilePicture"
+              component={ProfilePictureScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="DeleteAccount"
+              component={DeleteAccountScreen}
               options={{ headerShown: false }}
             />
             <Stack.Screen
@@ -354,16 +408,24 @@ function AppNavigation() {
           </>
         )}
       </Stack.Navigator>
-      {user ? <PodcastMiniPlayer /> : null}
+      {user && miniPlayerRoutes.has(activeRoute) && !(activeRoute === "Home" && homePanelOpen)
+        ? <PodcastMiniPlayer />
+        : null}
     </NavigationContainer>
   );
 
-  return useRevenueCatPaywall && user ? (
-    <RevenueCatGate key={user.uid} user={user}>
-      {navigation}
-    </RevenueCatGate>
-  ) : (
-    navigation
+  return (
+    <HomePanelContext.Provider value={setHomePanelOpen}>
+      <HomeWalkthroughProvider key={user?.uid ?? "anonymous"} navigationRef={navigationRef}>
+        {useRevenueCatPaywall && user ? (
+          <RevenueCatGate key={user.uid} user={user}>
+            {navigation}
+          </RevenueCatGate>
+        ) : (
+          navigation
+        )}
+      </HomeWalkthroughProvider>
+    </HomePanelContext.Provider>
   );
 }
 

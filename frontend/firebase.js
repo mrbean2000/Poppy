@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getApp, getApps, initializeApp } from "firebase/app";
+import { getFirestore } from "firebase/firestore";
 import {
   getAuth,
   getReactNativePersistence,
@@ -21,12 +22,11 @@ export const isFirebaseConfigured = [
   firebaseConfig.authDomain,
   firebaseConfig.projectId,
   firebaseConfig.appId,
-].every(
-  (value) => typeof value === "string" && value.length > 0,
-);
+].every((value) => typeof value === "string" && value.length > 0);
 
 let app = null;
 let auth = null;
+let db = null;
 
 if (isFirebaseConfigured) {
   app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -45,5 +45,4 @@ if (isFirebaseConfigured) {
   }
 }
 
-// Only export auth since you aren't using database services
 export { auth };

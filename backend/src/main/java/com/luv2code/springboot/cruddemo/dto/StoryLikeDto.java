@@ -2,7 +2,7 @@ package com.luv2code.springboot.cruddemo.dto;
 
 public class StoryLikeDto {
     private Integer userId;
-    private int postId;
+    private Long postId;
 
     public Integer getUserId() {
         return userId;
@@ -12,7 +12,7 @@ public class StoryLikeDto {
         this.userId = userId;
     }
 
-    public boolean getLike() {
+    public Boolean getLike() {
         return like;
     }
 
@@ -20,13 +20,13 @@ public class StoryLikeDto {
         this.like = like;
     }
 
-    public int getPostId() {
+    public Long getPostId() {
         return postId;
     }
 
-    public void setPostId(int postId) {
+    public void setPostId(Long postId) {
         this.postId = postId;
     }
 
-    private boolean like;
+    private Boolean like;
 }

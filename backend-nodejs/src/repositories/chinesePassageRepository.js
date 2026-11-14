@@ -6,7 +6,7 @@ const linkUser = async (db, passageId, userId) => {
   if (userId === null || userId === undefined) return;
 
   await db.query(
-    `INSERT INTO user_passage (user_id, passage_id)
+    `INSERT INTO user_chinese_passage (user_id, passage_id)
      VALUES ($1, $2)
      ON CONFLICT DO NOTHING`,
     [userId, passageId],
@@ -16,7 +16,7 @@ const linkUser = async (db, passageId, userId) => {
 const passageRepository = {
   findBySourceUrl: async (sourceUrl) => {
     const { rows } = await pool.query(
-      `SELECT ${PASSAGE_COLUMNS} FROM passage WHERE source_url = $1`,
+      `SELECT ${PASSAGE_COLUMNS} FROM chinese_passage WHERE source_url = $1`,
       [sourceUrl],
     );
     return rows[0] || null;
@@ -32,7 +32,7 @@ const passageRepository = {
       await client.query("BEGIN");
 
       const inserted = await client.query(
-        `INSERT INTO passage (title, passage, image_url, source_url)
+        `INSERT INTO chinese_passage (title, passage, image_url, source_url)
          VALUES ($1, $2, $3, $4)
          ON CONFLICT (source_url) WHERE source_url IS NOT NULL DO NOTHING
          RETURNING ${PASSAGE_COLUMNS}`,
@@ -49,7 +49,7 @@ const passageRepository = {
 
       if (!passage) {
         const existing = await client.query(
-          `SELECT ${PASSAGE_COLUMNS} FROM passage WHERE source_url = $1`,
+          `SELECT ${PASSAGE_COLUMNS} FROM chinese_passage WHERE source_url = $1`,
           [passageData.sourceUrl],
         );
         passage = existing.rows[0];
@@ -68,7 +68,7 @@ const passageRepository = {
 
   findAll: async () => {
     const { rows } = await pool.query(
-      `SELECT ${PASSAGE_COLUMNS} FROM passage ORDER BY id DESC`,
+      `SELECT ${PASSAGE_COLUMNS} FROM chinese_passage ORDER BY id DESC`,
     );
     return rows;
   },

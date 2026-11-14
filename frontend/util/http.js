@@ -1,11 +1,62 @@
 import axios from "axios";
 import { File, Paths } from "expo-file-system";
 
-const BACKEND_URL = "http://192.168.0.7:8080/api";
-const NODE_BACKEND_URL = "http://192.168.0.7:3001";
+// const BACKEND_URL = "http://192.168.0.11:8080/api";
+// const NODE_BACKEND_URL = "http://192.168.0.11:3001";
 
-// const BACKEND_URL = "http://192.168.115.60:8080/api";
-// const NODE_BACKEND_URL = "http://192.168.115.60:3001";
+const BACKEND_URL = "http://192.168.115.60:8080/api";
+const NODE_BACKEND_URL = "http://192.168.115.60:3001";
+
+export async function requestRecentHistory(kind, userId, item) {
+  try {
+    if (typeof userId !== "string" || !userId.trim()) {
+      throw new Error("Recent history requires a user ID.");
+    }
+    const historyApiUrl = BACKEND_URL;
+    const url = `${historyApiUrl.replace(
+      /\/$/,
+      "",
+    )}/recent-history/${encodeURIComponent(userId)}/${kind}`;
+    const response = item ? await axios.put(url, item) : await axios.get(url);
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      throw new Error(
+        status
+          ? `Unable to sync recent history (HTTP ${status}).`
+          : "Unable to connect to the history server.",
+        { cause: error },
+      );
+    }
+    throw error;
+  }
+}
+
+export async function getRandomQuote() {
+  try {
+    const response = await axios.get(`${BACKEND_URL}/quotes/random`);
+    const { quote, quoter } = response.data ?? {};
+    if (
+      typeof quote !== "string" ||
+      !quote.trim() ||
+      typeof quoter !== "string" ||
+      !quoter.trim()
+    ) {
+      throw new Error("The passage server returned an invalid quote.");
+    }
+    return { quote, quoter };
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      const message = status
+        ? `Failed to load a quote (HTTP ${status}).`
+        : "Unable to connect to the passage server.";
+      throw new Error(message, { cause: error });
+    }
+    throw error;
+  }
+}
 
 export async function getAllPassage() {
   try {
@@ -26,9 +77,45 @@ export async function getAllPassage() {
   }
 }
 
-export async function createPassage(url, userId) {
+export async function createChinesePassage(url, userId) {
   try {
-    const response = await axios.post(`${NODE_BACKEND_URL}/passages`, {
+    const response = await axios.post(`${NODE_BACKEND_URL}/chinese-passages`, {
+      url,
+      userId,
+    });
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const message =
+        error.response?.data?.message || "Unable to import passage.";
+      throw new Error(message, { cause: error });
+    }
+
+    throw error;
+  }
+}
+
+export async function createJapanesePassage(url, userId) {
+  try {
+    const response = await axios.post(`${NODE_BACKEND_URL}/japanese-passages`, {
+      url,
+      userId,
+    });
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const message =
+        error.response?.data?.message || "Unable to import passage.";
+      throw new Error(message, { cause: error });
+    }
+
+    throw error;
+  }
+}
+
+export async function createKoreanPassage(url, userId) {
+  try {
+    const response = await axios.post(`${NODE_BACKEND_URL}/korean-passages`, {
       url,
       userId,
     });
@@ -69,9 +156,11 @@ export async function createPassageFromText({
   }
 }
 
-export async function getPassageById(id) {
+export async function getPassageById(id, language) {
   try {
-    const response = await axios.get(`${BACKEND_URL}/passage/${id}`);
+    const response = await axios.get(`${BACKEND_URL}/passage/${id}`, {
+      params: language ? { language } : undefined,
+    });
     return response.data;
   } catch (error) {
     console.error("Failed to fetch passage:", error);
@@ -126,17 +215,53 @@ export async function getSegmentedPassageWithPinyinById(id, userId) {
   }
 }
 
-export async function recordVocabularyLookup(userId, word) {
+export async function getSegementedPassageWithFuriganaById(id, userId) {
+  try {
+    const response = await axios.get(
+      `${BACKEND_URL}/japanese-passage/${id}/segmented-with-furigana`,
+      { params: userId ? { userId } : undefined },
+    );
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      const message = status
+        ? `Failed to load segmented passage with furigana (HTTP ${status}).`
+        : "Unable to connect to the passage server.";
+
+      throw new Error(message, { cause: error });
+    }
+
+    throw error;
+  }
+}
+
+export function vocabularyLanguage(settings) {
+  const language = settings?.targetlanguage ?? "";
+  if (/japanese/i.test(language)) return "Japanese";
+  if (/korean/i.test(language)) return "Korean";
+  if (/chinese|mandarin/i.test(language)) return "Chinese";
+  throw new Error(
+    "Vocabulary is only available for Chinese, Japanese and Korean.",
+  );
+}
+
+export async function recordVocabularyLookup(userId, word, language) {
   const response = await axios.post(
-    `${BACKEND_URL}/users/${userId}/vocabulary/${encodeURIComponent(word)}/lookup`,
+    `${BACKEND_URL}/users/${userId}/vocabulary/${encodeURIComponent(
+      word,
+    )}/lookup`,
+    null,
+    { params: { language } },
   );
   return response.data;
 }
 
-export async function getUserVocabulary(userId) {
+export async function getUserVocabulary(userId, language) {
   try {
     const response = await axios.get(
       `${BACKEND_URL}/users/${userId}/vocabulary`,
+      { params: { language } },
     );
     return response.data;
   } catch (error) {
@@ -153,19 +278,35 @@ export async function getUserVocabulary(userId) {
   }
 }
 
-export async function updateVocabularyStatus(userId, word, statusLevel) {
+export async function updateVocabularyStatus(
+  userId,
+  word,
+  statusLevel,
+  language,
+) {
   const response = await axios.put(
-    `${BACKEND_URL}/users/${userId}/vocabulary/${encodeURIComponent(word)}/status`,
+    `${BACKEND_URL}/users/${userId}/vocabulary/${encodeURIComponent(
+      word,
+    )}/status`,
     { statusLevel },
+    { params: { language } },
   );
   return response.data;
 }
 
-export async function updateVocabularyFavorite(userId, word, favorite) {
+export async function updateVocabularyFavorite(
+  userId,
+  word,
+  favorite,
+  language,
+) {
   try {
     const response = await axios.put(
-      `${BACKEND_URL}/users/${userId}/vocabulary/${encodeURIComponent(word)}/favorite`,
+      `${BACKEND_URL}/users/${userId}/vocabulary/${encodeURIComponent(
+        word,
+      )}/favorite`,
       { favorite },
+      { params: { language } },
     );
     return response.data;
   } catch (error) {
@@ -199,6 +340,27 @@ export async function getMandarinWordDefinition(word) {
       throw new Error(message, { cause: error });
     }
 
+    throw error;
+  }
+}
+
+export async function getJapaneseWordDefinition(word) {
+  try {
+    const response = await axios.get(`${BACKEND_URL}/japaneseDictionary`, {
+      params: { word },
+    });
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      const message =
+        status === 404
+          ? "No Japanese dictionary entry found for this word."
+          : status
+          ? `Failed to load the dictionary entry (HTTP ${status}).`
+          : "Unable to connect to the dictionary server.";
+      throw new Error(message, { cause: error });
+    }
     throw error;
   }
 }
@@ -418,8 +580,8 @@ function parseJsonTranscript(transcriptText) {
             .join("")
             .trim()
         : typeof segment.text === "string"
-          ? segment.text.trim()
-          : "";
+        ? segment.text.trim()
+        : "";
       return { start, end, text };
     })
     .filter(
@@ -494,9 +656,9 @@ export async function getPodcastEpisodeTranscript(
         const candidate = normalizeAudioUrl(url);
         return Boolean(
           candidate &&
-          normalizedAudioUrl &&
-          (candidate.full === normalizedAudioUrl.full ||
-            (candidate.path && candidate.path === normalizedAudioUrl.path)),
+            normalizedAudioUrl &&
+            (candidate.full === normalizedAudioUrl.full ||
+              (candidate.path && candidate.path === normalizedAudioUrl.path)),
         );
       });
 
@@ -643,10 +805,10 @@ async function transcribePodcastAudioFile(audioFile, episodeId) {
         status === 413
           ? "This episode exceeds the 512 MB limit for automatic transcription."
           : status && typeof error.response?.data === "string"
-            ? error.response.data
-            : status
-              ? `Failed to generate podcast transcript (HTTP ${status}).`
-              : "Unable to connect to the podcast transcription service.";
+          ? error.response.data
+          : status
+          ? `Failed to generate podcast transcript (HTTP ${status}).`
+          : "Unable to connect to the podcast transcription service.";
       throw new Error(message, { cause: error });
     }
 
@@ -715,10 +877,11 @@ export async function getPodcastEpisodeTranscriptOrGenerate(
 
 // Story
 
-export async function getStoryLike(userId, postId) {
+export async function getStoryLike(userId, postId, language) {
   try {
     const response = await axios.get(
       `${BACKEND_URL}/story-like/user/${userId}/passage/${postId}`,
+      { params: { language } },
     );
     return response.data;
   } catch (error) {
@@ -735,13 +898,13 @@ export async function getStoryLike(userId, postId) {
   }
 }
 
-export async function updateStoryLike(userId, postId, like) {
+export async function updateStoryLike(userId, postId, like, language) {
   try {
-    const response = await axios.put(`${BACKEND_URL}/story-like`, {
-      userId,
-      postId,
-      like,
-    });
+    const response = await axios.put(
+      `${BACKEND_URL}/story-like`,
+      { userId, postId, like },
+      { params: { language } },
+    );
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
@@ -814,10 +977,11 @@ export async function getAllLanguages() {
 }
 
 // Last Read Passage
-export async function getLastReadPassageByUserId(userId) {
+export async function getLastReadPassageByUserId(userId, targetLanguageId) {
   try {
     const response = await axios.get(
       `${BACKEND_URL}/UserPassageProgress/${userId}/last-read-passage`,
+      { params: { targetLanguageId } },
     );
     return response.data;
   } catch (error) {
@@ -834,10 +998,16 @@ export async function getLastReadPassageByUserId(userId) {
   }
 }
 
-export async function updateLastReadPassage(userId, passageId) {
+export async function updateLastReadPassage(
+  userId,
+  passageId,
+  targetLanguageId,
+) {
   try {
     await axios.put(
       `${BACKEND_URL}/UserPassageProgress/${userId}/last-read-passage/${passageId}`,
+      null,
+      { params: { targetLanguageId } },
     );
   } catch (error) {
     if (axios.isAxiosError(error)) {

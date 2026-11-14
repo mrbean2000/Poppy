@@ -17,8 +17,10 @@ import * as Haptics from "expo-haptics";
 import * as Speech from "expo-speech";
 import {
   getUserVocabulary,
+  getUserSettings,
   updateVocabularyFavorite,
   updateVocabularyStatus,
+  vocabularyLanguage,
 } from "../util/http";
 import { useTheme } from "../theme/ThemeContext";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -33,6 +35,7 @@ export default function FlashcardsScreen({ navigation, route }) {
   const userIdRef = useRef(userId);
   userIdRef.current = userId;
   const [vocabulary, setVocabulary] = useState([]);
+  const languageRef = useRef(null);
   const flipProgress = useRef(new Animated.Value(0)).current;
   const [isFlipped, setIsFlipped] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -66,7 +69,10 @@ export default function FlashcardsScreen({ navigation, route }) {
       try {
         setIsLoading(true);
         setErrorMessage(null);
-        const allEntries = await getUserVocabulary(userId);
+        languageRef.current = null;
+        setVocabulary([]);
+        const language = vocabularyLanguage(await getUserSettings(userId));
+        const allEntries = await getUserVocabulary(userId, language);
         const filter = route.params?.filter;
         const entries =
           filter === "Learning"
@@ -77,6 +83,7 @@ export default function FlashcardsScreen({ navigation, route }) {
                 ? allEntries.filter((entry) => entry.favorite)
                 : allEntries;
         if (isCurrent) {
+          languageRef.current = language;
           originalVocabularyOrder.current = entries.map((entry) => entry.word);
           setVocabulary(entries);
         }
@@ -217,6 +224,7 @@ export default function FlashcardsScreen({ navigation, route }) {
         userIdRef.current,
         currentEntry.word,
         nextStatusLevel,
+        languageRef.current,
       ).catch(
         (error) => {
           console.warn("Failed to update vocabulary status:", error);
@@ -281,6 +289,7 @@ export default function FlashcardsScreen({ navigation, route }) {
         userIdRef.current,
         cardEntry.word,
         shouldFavorite,
+        languageRef.current,
       );
       setVocabulary((entries) =>
         entries.map((vocabularyEntry) =>
@@ -427,7 +436,7 @@ export default function FlashcardsScreen({ navigation, route }) {
 
     cancelAutoPlay();
     const backText = [
-      entry.pinyin || "No pinyin available",
+      entry.pinyin || "No pronunciation available",
       Array.isArray(entry.definitions)
         ? entry.definitions.join(". ")
         : entry.definitions || "No definitions available",
@@ -437,7 +446,7 @@ export default function FlashcardsScreen({ navigation, route }) {
     try {
       await Speech.stop();
       Speech.speak(isEnglishFace ? backText : entry.word, {
-        language: isEnglishFace ? "en-US" : "zh-CN",
+        language: isEnglishFace ? "en-US" : languageRef.current === "Japanese" ? "ja-JP" : "zh-CN",
         onError: (error) =>
           console.warn("Failed to read flashcard aloud:", error),
       });
@@ -478,7 +487,7 @@ export default function FlashcardsScreen({ navigation, route }) {
       Array.isArray(card.definitions) && card.definitions.length > 0
         ? card.definitions.join(". ")
         : card.definitions || "No definitions available";
-    const backText = [card.pinyin || "No pinyin available", definitions].join(
+    const backText = [card.pinyin || "No pronunciation available", definitions].join(
       ". ",
     );
 
@@ -554,7 +563,7 @@ export default function FlashcardsScreen({ navigation, route }) {
 
     try {
       Speech.speak(card.word, {
-        language: "zh-CN",
+        language: languageRef.current === "Japanese" ? "ja-JP" : "zh-CN",
         onDone: readDefinitions,
         onError: (error) => {
           console.warn("Failed to read flashcard word aloud:", error);
@@ -605,7 +614,7 @@ export default function FlashcardsScreen({ navigation, route }) {
         accessibilityRole="button"
         accessibilityLabel={
           isEnglishFace
-            ? "Read pinyin and definitions aloud"
+            ? "Read pronunciation and definitions aloud"
             : "Read word aloud"
         }
       >
@@ -652,7 +661,7 @@ export default function FlashcardsScreen({ navigation, route }) {
         style={[styles.definitionContent, { opacity: wordOpacity }]}
       >
         <Text style={[styles.pinyin, { color: theme.colors.blueDark }]}>
-          {entry.pinyin || "No pinyin available"}
+          {entry.pinyin || "No pronunciation available"}
         </Text>
         {Array.isArray(entry.definitions) && entry.definitions.length > 0 ? (
           <View>

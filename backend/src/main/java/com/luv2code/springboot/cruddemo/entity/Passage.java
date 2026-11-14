@@ -3,7 +3,7 @@ package com.luv2code.springboot.cruddemo.entity;
 import jakarta.persistence.*;
 
 @Entity
-@Table(name="Passage")
+@Table(name="chinese_passage")
 public class Passage {
 
     @Id
@@ -11,7 +11,7 @@ public class Passage {
     @Column(name="id")
     private int id;
 
-    @Column(name="passage")
+    @Column(name="passage", columnDefinition="TEXT")
     private String passage;
 
     @Column(name="title")

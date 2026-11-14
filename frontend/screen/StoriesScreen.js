@@ -11,12 +11,14 @@ import {
 } from "react-native";
 import { getAllPassage } from "../util/http";
 import { useTheme } from "../theme/ThemeContext";
+import { useWalkthroughScreen, WalkthroughStep, WalkthroughTouchable } from "../context/HomeWalkthroughContext";
 
 export default function StoriesScreen({ navigation }) {
   const { theme, isDarkMode } = useTheme();
   const [stories, setStories] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
+  const { track } = useWalkthroughScreen("Stories");
 
   async function fetchPassage() {
     try {
@@ -53,7 +55,9 @@ export default function StoriesScreen({ navigation }) {
           <Text style={[styles.title, { color: theme.colors.text }]}>
             All Stories
           </Text>
-          <TouchableOpacity
+          <WalkthroughStep name="addStory">
+          <WalkthroughTouchable
+            onLayout={track("addStory")}
             style={styles.addButton}
             onPress={() => navigation.navigate("Import")}
             accessibilityRole="button"
@@ -62,7 +66,8 @@ export default function StoriesScreen({ navigation }) {
             <Text style={[styles.addButtonText, { color: theme.colors.primary }]}>
               +
             </Text>
-          </TouchableOpacity>
+          </WalkthroughTouchable>
+          </WalkthroughStep>
         </View>
 
         <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>

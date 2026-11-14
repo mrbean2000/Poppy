@@ -18,9 +18,12 @@ import { useFocusEffect } from "@react-navigation/native";
 import * as Speech from "expo-speech";
 import {
   getMandarinWordDefinition,
+  getJapaneseWordDefinition,
   getUserProfileByFirebaseUid,
+  getUserSettings,
   getUserVocabulary,
   updateVocabularyFavorite,
+  vocabularyLanguage,
 } from "../util/http";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../theme/ThemeContext";
@@ -42,6 +45,7 @@ export default function MyVocabularyScreen({ navigation, route }) {
   }, [user?.uid]);
   const itemBackground = isDarkMode ? "#000000" : theme.colors.surface;
   const [vocabulary, setVocabulary] = useState([]);
+  const [language, setLanguage] = useState(null);
   const [favorites, setFavorites] = useState([]);
   const favoriteUpdatesRef = useRef(new Set());
   const pageScrollRef = useRef(null);
@@ -70,11 +74,16 @@ export default function MyVocabularyScreen({ navigation, route }) {
 
       async function loadVocabulary() {
         try {
-          if (!hasLoadedVocabulary) setIsLoading(true);
+          setIsLoading(true);
           setErrorMessage(null);
-          const entries = await getUserVocabulary(userId);
+          setVocabulary([]);
+          setFavorites([]);
+          setLanguage(null);
+          const selectedLanguage = vocabularyLanguage(await getUserSettings(userId));
+          const entries = await getUserVocabulary(userId, selectedLanguage);
           if (isCurrent) {
             hasLoadedVocabularyRef.current = true;
+            setLanguage(selectedLanguage);
             setVocabulary(entries);
             setFavorites(
               entries
@@ -84,14 +93,16 @@ export default function MyVocabularyScreen({ navigation, route }) {
           }
         } catch (error) {
           if (isCurrent) {
+            setVocabulary([]);
+            setFavorites([]);
+            setLanguage(null);
             if (hasLoadedVocabulary) {
               Alert.alert("Favorites could not be refreshed", error.message);
-            } else {
-              setErrorMessage(error.message);
             }
+            setErrorMessage(error.message);
           }
         } finally {
-          if (isCurrent && !hasLoadedVocabulary) setIsLoading(false);
+          if (isCurrent) setIsLoading(false);
         }
       }
 
@@ -162,7 +173,11 @@ export default function MyVocabularyScreen({ navigation, route }) {
 
     try {
       setIsDefinitionLoading(true);
-      const definition = await getMandarinWordDefinition(currentWord);
+      const definition = language === "Japanese"
+        ? { definitions: (await getJapaneseWordDefinition(currentWord)).entries.flatMap(
+            (entry) => entry.senses.map((sense) => sense.meanings.join("; ")),
+          ) }
+        : await getMandarinWordDefinition(currentWord);
       const activeWord =
         filteredVocabularyRef.current[cardIndexRef.current]?.word;
       if (activeWord === currentWord) setCardDefinition(definition);
@@ -193,6 +208,7 @@ export default function MyVocabularyScreen({ navigation, route }) {
         userId,
         word,
         shouldFavorite,
+        language,
       );
       setFavorites((current) => {
         const currentlyFavorite = current.includes(word);
@@ -223,7 +239,7 @@ export default function MyVocabularyScreen({ navigation, route }) {
     try {
       await Speech.stop();
       Speech.speak(entry.word, {
-        language: "zh-CN",
+        language: language === "Japanese" ? "ja-JP" : "zh-CN",
         onDone: () =>
           Speech.speak(definitions, {
             language: "en-US",

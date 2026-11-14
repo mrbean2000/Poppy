@@ -5,9 +5,11 @@ const app = express();
 app.use(express.json());
 
 const productRoutes = require("./src/api/routes/products");
-const passageRoutes = require("./src/api/routes/passage");
+const chinesePassageRoutes = require("./src/api/routes/chinesePassage");
 
 app.use("/products", productRoutes);
-app.use("/passages", passageRoutes);
+app.use("/chinese-passages", chinesePassageRoutes);
+app.use("/japanese-passages", require("./src/api/routes/japanesePassage"));
+app.use("/korean-passages", require("./src/api/routes/koreanPassage"));
 
 module.exports = app;

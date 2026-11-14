@@ -7,15 +7,21 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { getMandarinWordDefinition } from "../util/http";
+import {
+  getJapaneseWordDefinition,
+  getMandarinWordDefinition,
+  getUserSettings,
+  vocabularyLanguage,
+} from "../util/http";
 import { useTheme } from "../theme/ThemeContext";
 
 export default function VocabularyDetailScreen({ navigation, route }) {
-  const { theme } = useTheme();
+  const { theme, backendUserId } = useTheme();
   const { word } = route.params;
   const [definition, setDefinition] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [language, setLanguage] = useState(null);
 
   useEffect(() => {
     let isCurrent = true;
@@ -24,8 +30,14 @@ export default function VocabularyDetailScreen({ navigation, route }) {
       try {
         setIsLoading(true);
         setErrorMessage(null);
-        const result = await getMandarinWordDefinition(word);
-        if (isCurrent) setDefinition(result);
+        const selectedLanguage = vocabularyLanguage(await getUserSettings(backendUserId ?? 1));
+        const result = selectedLanguage === "Japanese"
+          ? await getJapaneseWordDefinition(word)
+          : await getMandarinWordDefinition(word);
+        if (isCurrent) {
+          setLanguage(selectedLanguage);
+          setDefinition(result);
+        }
       } catch (error) {
         if (isCurrent) setErrorMessage("Definition unavailable.");
       } finally {
@@ -37,7 +49,16 @@ export default function VocabularyDetailScreen({ navigation, route }) {
     return () => {
       isCurrent = false;
     };
-  }, [word]);
+  }, [word, backendUserId]);
+
+  const japaneseEntry = language === "Japanese" ? definition?.entries?.[0] : null;
+  const definitions = language === "Japanese"
+    ? definition?.entries?.flatMap((entry) =>
+        entry.senses.map((sense) =>
+          [sense.category, sense.meanings.join("; ")].filter(Boolean).join(": "),
+        ),
+      )
+    : definition?.definitions;
 
   return (
     <SafeAreaView
@@ -72,13 +93,17 @@ export default function VocabularyDetailScreen({ navigation, route }) {
                 { color: theme.colors.textSecondary },
               ]}
             >
-              {definition?.traditional === definition?.simplified
+              {language === "Japanese"
+                ? japaneseEntry?.writtenForms?.join(", ")
+                : definition?.traditional === definition?.simplified
                 ? definition?.simplified
                 : `${definition?.traditional || ""} / ${definition?.simplified || ""}`}
             </Text>
             <View style={styles.pronunciation}>
               <Text style={styles.ipa}>
-                {definition?.formattedPinyin || "No pinyin"}
+                {language === "Japanese"
+                  ? japaneseEntry?.readings?.join(", ") || "No reading available"
+                  : definition?.formattedPinyin || "No pinyin"}
               </Text>
             </View>
             <View style={styles.category}>
@@ -86,8 +111,8 @@ export default function VocabularyDetailScreen({ navigation, route }) {
                 {definition?.partOfSpeech || "DICTIONARY"}
               </Text>
             </View>
-            {definition?.definitions?.length ? (
-              definition.definitions.map((meaning, index) => (
+            {definitions?.length ? (
+              definitions.map((meaning, index) => (
                 <Text
                   key={`${meaning}-${index}`}
                   style={[styles.definition, { color: theme.colors.text }]}

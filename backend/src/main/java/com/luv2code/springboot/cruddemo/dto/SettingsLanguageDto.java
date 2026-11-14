@@ -16,11 +16,15 @@ public class SettingsLanguageDto {
     private Integer dailyListeningGoal;
     private LocalDate dateOfBirth;
     private Boolean practiceRemindersEnabled;
+    private String profilePictureUrl;
+    private boolean homeWalkthroughCompleted;
 
     public SettingsLanguageDto(int id, int user_id, boolean darkmode,
                                int nativelanguageid, int targetlanguageid,
                                Integer dailyReadingGoal, Integer dailyListeningGoal,
                                LocalDate dateOfBirth, Boolean practiceRemindersEnabled,
+                               String profilePictureUrl,
+                               boolean homeWalkthroughCompleted,
                                String nativelanguage, String targetlanguage,
                                String nativeLanguageFlag, String targetLanguageFlag) {
         this.id = id;
@@ -32,6 +36,8 @@ public class SettingsLanguageDto {
         this.dailyListeningGoal = dailyListeningGoal;
         this.dateOfBirth = dateOfBirth;
         this.practiceRemindersEnabled = practiceRemindersEnabled;
+        this.profilePictureUrl = profilePictureUrl;
+        this.homeWalkthroughCompleted = homeWalkthroughCompleted;
         this.nativelanguage = nativelanguage;
         this.targetlanguage = targetlanguage;
         this.nativeLanguageFlag = nativeLanguageFlag;
@@ -124,5 +130,13 @@ public class SettingsLanguageDto {
 
     public Boolean getPracticeRemindersEnabled() {
         return practiceRemindersEnabled;
+    }
+
+    public String getProfilePictureUrl() {
+        return profilePictureUrl;
+    }
+
+    public boolean isHomeWalkthroughCompleted() {
+        return homeWalkthroughCompleted;
     }
 }

@@ -7,7 +7,7 @@ const extractParagraphs = require("../src/utils/extractParagraphs");
 
 (async () => {
   const { rows } = await pool.query(
-    "SELECT id, source_url FROM passage WHERE source_url IS NOT NULL ORDER BY id",
+    "SELECT id, source_url FROM chinese_passage WHERE source_url IS NOT NULL ORDER BY id",
   );
   let ok = 0;
   for (const { id, source_url } of rows) {
@@ -24,7 +24,7 @@ const extractParagraphs = require("../src/utils/extractParagraphs");
       if (!article) throw new Error("Readability returned nothing");
       const content = extractParagraphs(article.content, article.textContent);
       if (!content) throw new Error("empty content");
-      await pool.query("UPDATE passage SET passage = $1 WHERE id = $2", [
+      await pool.query("UPDATE chinese_passage SET passage = $1 WHERE id = $2", [
         content,
         id,
       ]);

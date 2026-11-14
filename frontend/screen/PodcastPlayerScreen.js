@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   ImageBackground,
   PanResponder,
@@ -17,6 +18,8 @@ import { setAudioModeAsync } from "expo-audio";
 import { getPodcastEpisodeTranscriptOrGenerate } from "../util/http";
 import { usePodcastPlayback } from "../components/PodcastPlaybackContext";
 import { useTheme } from "../theme/ThemeContext";
+import { useAuth } from "../context/AuthContext";
+import { recordRecentPodcast } from "../util/recentHistory";
 
 const SEEK_INTERVAL_SECONDS = 15;
 const TAP_MOVE_TOLERANCE = 5;
@@ -31,6 +34,7 @@ function formatTime(seconds) {
 
 export default function PodcastPlayerScreen({ navigation, route }) {
   const { theme, isDarkMode } = useTheme();
+  const { user } = useAuth();
   const itemBackground = isDarkMode ? "#000000" : "#FFFFFF";
   const channel = route.params?.channel;
   const episode = route.params?.episode;
@@ -118,6 +122,10 @@ const scrubResponder = useRef(
     async function startEpisode() {
       try {
         loadEpisode(channel, episode);
+        recordRecentPodcast(user?.uid, channel, episode).catch((error) => {
+          console.warn("Unable to save recent podcast:", error);
+          Alert.alert("Recent podcasts", error.message);
+        });
         if (
           currentPodcast?.episode?.episodeUrl === audioUrl &&
           status.didJustFinish
@@ -143,7 +151,7 @@ const scrubResponder = useRef(
     return () => {
       isCurrent = false;
     };
-  }, [audioUrl, loadEpisode, player]);
+  }, [audioUrl, loadEpisode, player, user?.uid]);
 
   useEffect(() => {
     let isCurrent = true;

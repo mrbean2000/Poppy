@@ -1,6 +1,8 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
+  Alert,
+  AppState,
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
@@ -15,12 +17,18 @@ import * as Speech from "expo-speech";
 import { setAudioModeAsync } from "expo-audio";
 import * as Haptics from "expo-haptics";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import AudioController from "../components/AudioController";
 import VocabularyModal from "../components/VocabularyModal";
 import { useTheme } from "../theme/ThemeContext";
+import { useAuth } from "../context/AuthContext";
+import { recordRecentArticle } from "../util/recentHistory";
+import { saveArticleProgress } from "../util/articleProgress";
 import {
   getPassageById,
+  getUserSettings,
   getSegmentedPassageWithPinyinById,
+  getSegementedPassageWithFuriganaById,
   getStoryLike,
   updateStoryLike,
   updateLastReadPassage,
@@ -58,18 +66,29 @@ const WordToken = memo(function WordToken({
 });
 
 export default function ReaderScreen({ navigation, route }) {
-  const { theme, isDarkMode, backendUserId } = useTheme();
+  const { theme, isDarkMode, backendUserId, isThemeLoading } = useTheme();
+  const { user } = useAuth();
   const [selectedWord, setSelectedWord] = useState(null);
   const [passage, setPassage] = useState(null);
+  const [loadedLanguage, setLoadedLanguage] = useState(null);
   const [segmentedPassage, setSegmentedPassage] = useState(null);
   const [isSegmented, setIsSegmented] = useState(false);
   const [showPinyin, setShowPinyin] = useState(false);
   const { id, title, imageUrl, userId: routeUserId = 1 } = route.params;
+  const { readingLanguage, readingLanguageId } = route.params;
   const userId = backendUserId ?? routeUserId;
+  const settingsUserId = backendUserId ?? route.params?.userId;
+  const targetLanguage =
+    loadedLanguage?.id === id && loadedLanguage.userId === settingsUserId
+      ? loadedLanguage.language
+      : null;
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
   const [isLiked, setIsLiked] = useState(false);
   const [isUpdatingLike, setIsUpdatingLike] = useState(false);
+  const [isLoadingLike, setIsLoadingLike] = useState(false);
+  const [likeLoadError, setLikeLoadError] = useState(false);
+  const [likeRetry, setLikeRetry] = useState(0);
   const [readingProgress, setReadingProgress] = useState(0);
   const [isTitleExpanded, setIsTitleExpanded] = useState(false);
   const [paragraphLayout, setParagraphLayout] = useState(null);
@@ -84,9 +103,56 @@ export default function ReaderScreen({ navigation, route }) {
     useState(false);
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
   const speechSession = useRef(0);
+  const segmentationRequestRef = useRef(0);
+  const likeRequestRef = useRef(0);
   const scrollViewRef = useRef(null);
   const wordLayoutY = useRef({});
   const lastScrolledWord = useRef(null);
+  const articleProgressRef = useRef(null);
+
+  const flushArticleProgress = useCallback((pending) => {
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pending.timer = null;
+    saveArticleProgress(
+      pending.userId,
+      pending.languageId,
+      pending.articleId,
+      pending.progress,
+    ).catch((error) => {
+      Alert.alert("Reading progress", error.message);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!user?.uid || !targetLanguage || !passage) return undefined;
+    const pending = {
+      userId: user.uid,
+      languageId: loadedLanguage.languageId,
+      articleId: id,
+      progress: 0,
+      timer: null,
+    };
+    articleProgressRef.current = pending;
+    pending.timer = setTimeout(() => flushArticleProgress(pending), 800);
+    return () => {
+      flushArticleProgress(pending);
+      if (articleProgressRef.current === pending) articleProgressRef.current = null;
+    };
+  }, [user?.uid, id, targetLanguage, loadedLanguage?.languageId, passage, flushArticleProgress]);
+
+  useFocusEffect(
+    useCallback(() => () => {
+      flushArticleProgress(articleProgressRef.current);
+    }, [flushArticleProgress]),
+  );
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "active") flushArticleProgress(articleProgressRef.current);
+    });
+    return () => subscription.remove();
+  }, [flushArticleProgress]);
 
   const handleWordLayout = useCallback((index, y) => {
     wordLayoutY.current[index] = y;
@@ -169,19 +235,29 @@ export default function ReaderScreen({ navigation, route }) {
   }, []);
 
   function handleScroll(event) {
-    if (!paragraphLayout || !scrollViewHeight) return;
+    if (!paragraphLayout || paragraphLayout.height <= 0 || !scrollViewHeight) return;
 
     const scrollOffset = event.nativeEvent.contentOffset.y;
     const scrollableParagraphHeight = paragraphLayout.height - scrollViewHeight;
-
-    if (scrollableParagraphHeight <= 0) {
-      setReadingProgress(1);
-      return;
-    }
-
     const paragraphProgress =
-      (scrollOffset - paragraphLayout.y) / scrollableParagraphHeight;
-    setReadingProgress(Math.max(0, Math.min(1, paragraphProgress)));
+      scrollableParagraphHeight <= 0
+        ? (scrollOffset + scrollViewHeight - paragraphLayout.y) / paragraphLayout.height
+        : (scrollOffset - paragraphLayout.y) / scrollableParagraphHeight;
+    const progress = Math.max(0, Math.min(1, paragraphProgress));
+    setReadingProgress(progress);
+
+    const pending = articleProgressRef.current;
+    if (
+      pending &&
+      pending.articleId === id &&
+      pending.userId === user?.uid &&
+      pending.languageId === loadedLanguage?.languageId &&
+      progress > pending.progress
+    ) {
+      pending.progress = progress;
+      clearTimeout(pending.timer);
+      pending.timer = setTimeout(() => flushArticleProgress(pending), 800);
+    }
   }
 
   async function fetchPassageById(id) {
@@ -189,7 +265,8 @@ export default function ReaderScreen({ navigation, route }) {
 
     try {
       setIsLoading(true);
-      const fetchedPassage = await getPassageById(id);
+      if (!targetLanguage) throw new Error("Target language is not available.");
+      const fetchedPassage = await getPassageById(id, targetLanguage);
       setPassage(fetchedPassage.passage);
       setSegmentedPassage(null);
     } catch (error) {
@@ -200,22 +277,35 @@ export default function ReaderScreen({ navigation, route }) {
   }
 
   async function fetchSegementedPassageById(id) {
+    if (!targetLanguage) return;
     if (segmentedPassage) return segmentedPassage;
 
+    const requestId = ++segmentationRequestRef.current;
     try {
       setIsLoading(true);
+      setErrorMessage(null);
 
-      const fetchedSegmented = await getSegmentedPassageWithPinyinById(
-        id,
-        userId,
-      );
+      const fetchedSegmented =
+        targetLanguage === "Japanese"
+          ? await getSegementedPassageWithFuriganaById(id, userId)
+          : await getSegmentedPassageWithPinyinById(id, userId);
 
-      setSegmentedPassage(fetchedSegmented);
+      if (requestId === segmentationRequestRef.current) {
+        setSegmentedPassage(fetchedSegmented);
+      }
       return fetchedSegmented;
     } catch (error) {
-      setErrorMessage(error.message);
+      if (requestId === segmentationRequestRef.current) {
+        setErrorMessage(error.message);
+        if (targetLanguage === "Japanese") {
+          setShowPinyin(false);
+          setIsSegmented(false);
+        }
+      }
     } finally {
-      setIsLoading(false);
+      if (requestId === segmentationRequestRef.current) {
+        setIsLoading(false);
+      }
     }
   }
 
@@ -229,16 +319,19 @@ export default function ReaderScreen({ navigation, route }) {
   }
 
   function splitIntoSentences(text) {
-    return (text?.match(/[^。！？!?\n]+[。！？!?]*/g) || []).filter((sentence) =>
-      sentence.trim(),
+    return (text?.match(/[^。！？!?\n]+[。！？!?]*/g) || []).filter(
+      (sentence) => sentence.trim(),
     );
   }
 
   async function getSentences() {
+    if (!targetLanguage) return [];
     let text = passage;
     if (!text) {
       try {
-        text = (await getPassageById(id)).passage;
+        if (!targetLanguage)
+          throw new Error("Target language is not available.");
+        text = (await getPassageById(id, targetLanguage)).passage;
         setPassage(text);
       } catch (error) {
         setErrorMessage(error.message);
@@ -252,7 +345,10 @@ export default function ReaderScreen({ navigation, route }) {
   function getSentenceRanges(text) {
     return [...(text || "").matchAll(/[^。！？!?\n]+[。！？!?]*/g)]
       .filter((match) => match[0].trim())
-      .map((match) => ({ start: match.index, end: match.index + match[0].length }));
+      .map((match) => ({
+        start: match.index,
+        end: match.index + match[0].length,
+      }));
   }
 
   // The passage is spoken as one continuous utterance so there are no gaps
@@ -284,8 +380,13 @@ export default function ReaderScreen({ navigation, route }) {
     setSpokenSentenceIndex(index);
     setSpokenCharPos(null);
     Speech.speak(chunkText, {
-      language: "zh-CN",
-      voice: speechVoice.current,
+      language:
+        targetLanguage === "Japanese"
+          ? "ja-JP"
+          : targetLanguage === "Korean"
+            ? "ko-KR"
+            : "zh-CN",
+      voice: targetLanguage === "Chinese" ? speechVoice.current : undefined,
       pitch: 1,
       rate,
       // Boundary events are only emitted on some platforms (iOS).
@@ -296,10 +397,7 @@ export default function ReaderScreen({ navigation, route }) {
           passageRef.current.slice(0, position).replace(/\s/g, "").length,
         );
         let current = index;
-        while (
-          current < endIndex &&
-          sentences[current + 1].start <= position
-        ) {
+        while (current < endIndex && sentences[current + 1].start <= position) {
           current += 1;
         }
         setSpokenSentenceIndex(current);
@@ -357,8 +455,10 @@ export default function ReaderScreen({ navigation, route }) {
     const sentences = await getSentences();
     if (!sentences.length) return;
 
-    setIsSegmented(true);
-    fetchSegementedPassageById(id);
+    if (targetLanguage === "Chinese") {
+      setIsSegmented(true);
+      fetchSegementedPassageById(id);
+    }
 
     // iOS mutes speech when the silent switch is on unless this is enabled
     await setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
@@ -468,48 +568,145 @@ export default function ReaderScreen({ navigation, route }) {
     );
   }
 
-  async function fetchStoryLike(likeUserId, postId) {
-    try {
-      const likeData = await getStoryLike(likeUserId, postId);
-      setIsLiked(Boolean(likeData.like));
-    } catch (error) {
-      setErrorMessage(error.message);
-    }
-  }
-
   async function handleLikePress() {
     const nextLike = !isLiked;
     const likeUserId = backendUserId ?? userId;
+    const requestId = likeRequestRef.current;
 
     setIsLiked(nextLike);
 
     try {
       setIsUpdatingLike(true);
-      const likeData = await updateStoryLike(likeUserId, id, nextLike);
-      setIsLiked(Boolean(likeData.like));
+      const likeData = await updateStoryLike(
+        likeUserId,
+        id,
+        nextLike,
+        targetLanguage,
+      );
+      if (requestId === likeRequestRef.current)
+        setIsLiked(Boolean(likeData.like));
     } catch (error) {
-      setIsLiked(!nextLike);
-      setErrorMessage(error.message);
+      if (requestId === likeRequestRef.current) {
+        setIsLiked(!nextLike);
+        setErrorMessage(error.message);
+      }
     } finally {
-      setIsUpdatingLike(false);
+      if (requestId === likeRequestRef.current) setIsUpdatingLike(false);
     }
   }
 
   useEffect(() => {
-    fetchPassageById(id);
-  }, [id]);
+    let isCurrent = true;
+
+    async function loadPassage() {
+      setLoadedLanguage(null);
+      setPassage(null);
+      setSegmentedPassage(null);
+      setIsSegmented(false);
+      setShowPinyin(false);
+      setIsLiked(false);
+      setReadingProgress(0);
+      setErrorMessage(null);
+      setIsLoading(true);
+
+      try {
+        if (!settingsUserId) {
+          if (isThemeLoading) return;
+          throw new Error(
+            "Unable to load your target language without a user profile.",
+          );
+        }
+        const settings = await getUserSettings(settingsUserId);
+        const selectedLanguage = readingLanguage ?? settings?.targetlanguage ?? "";
+        const languageId = readingLanguageId ?? settings?.targetlanguageid;
+        let language;
+        if (/japanese/i.test(selectedLanguage)) {
+          language = "Japanese";
+        } else if (/korean/i.test(selectedLanguage)) {
+          language = "Korean";
+        } else if (/chinese|mandarin/i.test(selectedLanguage)) {
+          language = "Chinese";
+        } else {
+          throw new Error(
+            "Reading passages is only available for Chinese, Japanese and Korean.",
+          );
+        }
+        if (
+          !Number.isInteger(languageId) ||
+          languageId <= 0
+        ) {
+          throw new Error("Your target language does not have a valid ID.");
+        }
+        const fetchedPassage = await getPassageById(id, language);
+        if (!isCurrent) return;
+        setLoadedLanguage({
+          id,
+          userId: settingsUserId,
+          language,
+          languageId,
+        });
+        setPassage(fetchedPassage.passage);
+      } catch (error) {
+        if (isCurrent) setErrorMessage(error.message);
+      } finally {
+        if (isCurrent) setIsLoading(false);
+      }
+    }
+
+    loadPassage();
+    return () => {
+      isCurrent = false;
+      segmentationRequestRef.current += 1;
+    };
+  }, [id, settingsUserId, isThemeLoading, readingLanguage, readingLanguageId]);
 
   useEffect(() => {
     const likeUserId = backendUserId ?? userId;
-    if (!likeUserId) return;
-    fetchStoryLike(likeUserId, id);
-  }, [id, backendUserId, userId]);
+    const requestId = ++likeRequestRef.current;
+    setIsUpdatingLike(false);
+    setIsLiked(false);
+    setLikeLoadError(false);
+    if (!likeUserId || !targetLanguage) {
+      setIsLoadingLike(false);
+      return;
+    }
+    setIsLoadingLike(true);
+    getStoryLike(likeUserId, id, targetLanguage)
+      .then((likeData) => {
+        if (requestId === likeRequestRef.current)
+          setIsLiked(Boolean(likeData.like));
+      })
+      .catch((error) => {
+        if (requestId === likeRequestRef.current) {
+          setLikeLoadError(true);
+          setErrorMessage(error.message);
+        }
+      })
+      .finally(() => {
+        if (requestId === likeRequestRef.current) setIsLoadingLike(false);
+      });
+    return () => {
+      likeRequestRef.current += 1;
+    };
+  }, [id, backendUserId, userId, targetLanguage, likeRetry]);
 
   useEffect(() => {
     const progressUserId = backendUserId ?? userId;
-    if (!progressUserId) return;
-    updateLastReadPassage(progressUserId, id).catch(() => {});
-  }, [id, backendUserId, userId]);
+    if (!progressUserId || !targetLanguage) return;
+    updateLastReadPassage(progressUserId, id, loadedLanguage.languageId).catch(
+      (error) => setErrorMessage(error.message),
+    );
+    recordRecentArticle(user?.uid, {
+      id,
+      languageId: loadedLanguage.languageId,
+      language: targetLanguage,
+      title,
+      imageUrl,
+    }).catch((error) => {
+      console.warn("Unable to save recent article:", error);
+      Alert.alert("Recent articles", error.message);
+    });
+  }, [id, backendUserId, userId, targetLanguage, loadedLanguage?.languageId, user?.uid, title, imageUrl]);
 
   // One completion per visit; reopening the passage allows another.
   const completionRecorded = useRef(false);
@@ -520,14 +717,20 @@ export default function ReaderScreen({ navigation, route }) {
 
   useEffect(() => {
     const completionUserId = backendUserId ?? userId;
-    if (readingProgress < 1 || !passage || !completionUserId) return;
+    if (
+      targetLanguage !== "Chinese" ||
+      readingProgress < 1 ||
+      !passage ||
+      !completionUserId
+    )
+      return;
     if (completionRecorded.current) return;
 
     completionRecorded.current = true;
     recordPassageCompletion(completionUserId, id).catch(() => {
       completionRecorded.current = false;
     });
-  }, [readingProgress, passage, id, backendUserId, userId]);
+  }, [readingProgress, passage, id, backendUserId, userId, targetLanguage]);
 
   useEffect(() => {
     return () => {
@@ -576,24 +779,26 @@ export default function ReaderScreen({ navigation, route }) {
               ? `${title.slice(0, 16)}...`
               : title}
           </Text>
-          <TouchableOpacity
-            style={styles.likeButton}
-            onPress={handleLikePress}
-            disabled={isUpdatingLike}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityRole="button"
-            accessibilityLabel={isLiked ? "Unlike story" : "Like story"}
-          >
-            <Text
-              style={[
-                styles.bookmark,
-                { color: theme.colors.text },
-                isLiked && styles.bookmarkLiked,
-              ]}
+          {targetLanguage && (
+            <TouchableOpacity
+              style={styles.likeButton}
+              onPress={handleLikePress}
+              disabled={isUpdatingLike || isLoadingLike || likeLoadError}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={isLiked ? "Unlike story" : "Like story"}
             >
-              {isLiked ? "♥" : "♡"}
-            </Text>
-          </TouchableOpacity>
+              <Text
+                style={[
+                  styles.bookmark,
+                  { color: theme.colors.text },
+                  isLiked && styles.bookmarkLiked,
+                ]}
+              >
+                {isLiked ? "♥" : "♡"}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.progressContainer}>
@@ -653,129 +858,160 @@ export default function ReaderScreen({ navigation, route }) {
             />
           </View>
 
-          <View style={styles.textModeControl}>
-            <View
-              style={[
-                styles.modeButtonsGroup,
-                !isDarkMode && { backgroundColor: theme.colors.surface },
-              ]}
-            >
-              {modeLayouts.original && modeLayouts.learning && (
-                <Animated.View
-                  pointerEvents="none"
+          {targetLanguage && targetLanguage !== "Korean" && (
+            <View style={styles.textModeControl}>
+              <View
+                style={[
+                  styles.modeButtonsGroup,
+                  !isDarkMode && { backgroundColor: theme.colors.surface },
+                ]}
+              >
+                {modeLayouts.original && modeLayouts.learning && (
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[
+                      styles.modeIndicator,
+                      {
+                        left: modeAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [
+                            modeLayouts.original.x,
+                            modeLayouts.learning.x,
+                          ],
+                        }),
+                        width: modeAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [
+                            modeLayouts.original.width,
+                            modeLayouts.learning.width,
+                          ],
+                        }),
+                      },
+                    ]}
+                  />
+                )}
+                <TouchableOpacity
                   style={[
-                    styles.modeIndicator,
-                    {
-                      left: modeAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [
-                          modeLayouts.original.x,
-                          modeLayouts.learning.x,
-                        ],
-                      }),
-                      width: modeAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [
-                          modeLayouts.original.width,
-                          modeLayouts.learning.width,
-                        ],
-                      }),
-                    },
+                    styles.textModeButton,
+                    !modeLayouts.original &&
+                      !isSegmented &&
+                      styles.textModeButtonActive,
                   ]}
+                  onLayout={(event) => {
+                    const { x, width } = event.nativeEvent.layout;
+                    setModeLayouts((current) => ({
+                      ...current,
+                      original: { x, width },
+                    }));
+                  }}
+                  onPress={() => {
+                    Haptics.selectionAsync().catch(() => {});
+                    fetchPassageById(id);
+                    setIsSegmented(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.textModeLabel,
+                      !isSegmented && styles.textModeLabelActive,
+                      !isDarkMode && { color: theme.colors.text },
+                    ]}
+                  >
+                    Original
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.textModeButton,
+                    !modeLayouts.learning &&
+                      isSegmented &&
+                      styles.textModeButtonActive,
+                  ]}
+                  onLayout={(event) => {
+                    const { x, width } = event.nativeEvent.layout;
+                    setModeLayouts((current) => ({
+                      ...current,
+                      learning: { x, width },
+                    }));
+                  }}
+                  onPress={() => {
+                    Haptics.selectionAsync().catch(() => {});
+                    fetchSegementedPassageById(id);
+                    setIsSegmented(true);
+                  }}
+                  disabled={isSegmented}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: isSegmented }}
+                >
+                  <Text
+                    style={[
+                      styles.textModeLabel,
+                      isSegmented && styles.textModeLabelActive,
+                      targetLanguage === "Chinese" &&
+                        !segmentedPassage &&
+                        styles.textModeLabelDisabled,
+                      !isDarkMode && { color: theme.colors.text },
+                    ]}
+                  >
+                    Learning Mode
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <View
+                style={[
+                  styles.pinyinToggle,
+                  !isDarkMode && {
+                    backgroundColor: theme.colors.surface,
+                    borderColor: theme.colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.textModeLabelPinyin,
+                    !isDarkMode && { color: theme.colors.text },
+                  ]}
+                >
+                  {targetLanguage === "Japanese" ? "Furigana" : "Pinyin"}
+                </Text>
+                <Switch
+                  value={showPinyin}
+                  onValueChange={handlePinyinToggle}
+                  accessibilityLabel={
+                    targetLanguage === "Japanese" ? "Furigana" : "Pinyin"
+                  }
+                  trackColor={{
+                    false: isDarkMode ? "#4E6159" : theme.colors.border,
+                    true: theme.colors.primary,
+                  }}
+                  thumbColor="#FFFFFF"
                 />
-              )}
-              <TouchableOpacity
-                style={[
-                  styles.textModeButton,
-                  !modeLayouts.original &&
-                    !isSegmented &&
-                    styles.textModeButtonActive,
-                ]}
-                onLayout={(event) => {
-                  const { x, width } = event.nativeEvent.layout;
-                  setModeLayouts((current) => ({
-                    ...current,
-                    original: { x, width },
-                  }));
-                }}
-                onPress={() => {
-                  Haptics.selectionAsync().catch(() => {});
-                  fetchPassageById(id);
-                  setIsSegmented(false);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.textModeLabel,
-                    !isSegmented && styles.textModeLabelActive,
-                    !isDarkMode && { color: theme.colors.text },
-                  ]}
-                >
-                  Original
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.textModeButton,
-                  !modeLayouts.learning &&
-                    isSegmented &&
-                    styles.textModeButtonActive,
-                ]}
-                onLayout={(event) => {
-                  const { x, width } = event.nativeEvent.layout;
-                  setModeLayouts((current) => ({
-                    ...current,
-                    learning: { x, width },
-                  }));
-                }}
-                onPress={() => {
-                  Haptics.selectionAsync().catch(() => {});
-                  fetchSegementedPassageById(id);
-                  setIsSegmented(true);
-                }}
-                // onPress={() => segmentedPassage && setIsSegmented(true)}
-                disabled={isSegmented}
-              >
-                <Text
-                  style={[
-                    styles.textModeLabel,
-                    isSegmented && styles.textModeLabelActive,
-                    !segmentedPassage && styles.textModeLabelDisabled,
-                    !isDarkMode && { color: theme.colors.text },
-                  ]}
-                >
-                  Learning Mode
-                </Text>
-              </TouchableOpacity>
+              </View>
             </View>
-            <View
-              style={[
-                styles.pinyinToggle,
-                !isDarkMode && {
-                  backgroundColor: theme.colors.surface,
-                  borderColor: theme.colors.border,
-                },
-              ]}
+          )}
+
+          {errorMessage && (
+            <Text
+              accessibilityRole="alert"
+              style={{ color: theme.colors.text }}
             >
-              <Text
-                style={[
-                  styles.textModeLabelPinyin,
-                  !isDarkMode && { color: theme.colors.text },
-                ]}
-              >
-                Pinyin
+              {errorMessage}
+            </Text>
+          )}
+          {likeLoadError && (
+            <TouchableOpacity
+              onPress={() => {
+                setErrorMessage(null);
+                setLikeRetry((attempt) => attempt + 1);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading like status"
+            >
+              <Text style={{ color: theme.colors.text }}>
+                Retry loading like status
               </Text>
-              <Switch
-                value={showPinyin}
-                onValueChange={handlePinyinToggle}
-                trackColor={{
-                  false: isDarkMode ? "#4E6159" : theme.colors.border,
-                  true: theme.colors.primary,
-                }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-          </View>
+            </TouchableOpacity>
+          )}
 
           <View
             style={styles.paragraphContainer}
@@ -784,11 +1020,63 @@ export default function ReaderScreen({ navigation, route }) {
             <View
               style={[
                 styles.wordRow,
+                targetLanguage === "Japanese" &&
+                  (isSegmented || showPinyin) &&
+                  segmentedPassage &&
+                  styles.japaneseWordRow,
                 { backgroundColor: isDarkMode ? "#000000" : "#FFF4E6" },
               ]}
             >
-              {(isSegmented || showPinyin || isReadingAloud) &&
+              {targetLanguage === "Japanese" &&
+              (isSegmented || showPinyin) &&
               segmentedPassage ? (
+                segmentedPassage.flatMap((entry, index) =>
+                  entry.word
+                    .split(/(\r\n|\r|\n)/)
+                    .filter(Boolean)
+                    .map((part, partIndex) =>
+                      /^[\r\n]+$/.test(part) ? (
+                        <View
+                          key={`${index}-${partIndex}`}
+                          style={{ width: "100%", height: 14 }}
+                        />
+                      ) : (
+                        <TouchableOpacity
+                          key={`${index}-${partIndex}`}
+                          style={[
+                            styles.japaneseWord,
+                            isSegmented &&
+                              !/^\s+$/.test(part) &&
+                              styles.japaneseLearningWord,
+                            isSegmented &&
+                              entry.statusLevel &&
+                              styles[`wordStatus${entry.statusLevel}`],
+                          ]}
+                          onPress={() => openVocabularyModal(part)}
+                          disabled={!isSegmented || !/[\p{L}\p{N}]/u.test(part)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Look up ${part}`}
+                        >
+                          {showPinyin && (
+                            <Text style={styles.pinyinText}>
+                              {entry.furigana ?? ""}
+                            </Text>
+                          )}
+                          <Text
+                            style={[
+                              styles.normalText,
+                              { color: theme.colors.text },
+                            ]}
+                          >
+                            {part}
+                          </Text>
+                        </TouchableOpacity>
+                      ),
+                    ),
+                )
+              ) : targetLanguage === "Chinese" &&
+                (isSegmented || showPinyin || isReadingAloud) &&
+                segmentedPassage ? (
                 (() => {
                   const wordSentenceIndexes = getWordSentenceIndexes();
                   let consumed = 0;
@@ -825,7 +1113,11 @@ export default function ReaderScreen({ navigation, route }) {
                 })()
               ) : (
                 <Text style={[styles.normalText, { color: theme.colors.text }]}>
-                  {passage || "Loading..."}
+                  {targetLanguage && passage
+                    ? passage
+                    : isLoading
+                      ? "Loading..."
+                      : ""}
                 </Text>
               )}
             </View>
@@ -849,6 +1141,7 @@ export default function ReaderScreen({ navigation, route }) {
         {selectedWord && (
           <VocabularyModal
             word={selectedWord}
+            language={targetLanguage}
             userId={userId}
             onClose={closeVocabularyModal}
             onLookup={handleWordLookedUp}
@@ -1113,6 +1406,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: 5,
     marginBottom: 8,
+  },
+
+  japaneseWordRow: {
+    gap: 0,
+  },
+
+  japaneseWord: {
+    alignItems: "center",
+    marginBottom: 8,
+  },
+
+  japaneseLearningWord: {
+    marginRight: 5,
   },
 
   spokenWord: {

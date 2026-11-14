@@ -1,11 +1,11 @@
-const productService = require("../services/passageService");
+const chinesePassageService = require("../services/chinesePassageService");
 
 const FOREIGN_KEY_VIOLATION = "23503";
 
 const createPassage = async (req, res, next) => {
   try {
     const { url, userId } = req.body;
-    const { passage, alreadyImported } = await productService.createPassage(
+    const { passage, alreadyImported } =     await chinesePassageService.createPassage(
       url,
       userId,
     );

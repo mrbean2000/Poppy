@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { StackActions, useFocusEffect } from "@react-navigation/native";
 import {
   SafeAreaView,
   ScrollView,
@@ -19,8 +20,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { usePodcastPlayback } from "../components/PodcastPlaybackContext";
 import { useTheme } from "../theme/ThemeContext";
-
-const avatar = require("../assets/images/masot/poppy_raincoat.jpeg");
+import { getProfilePictureSource } from "../util/profilePictures";
 
 export default function SettingsScreen({ navigation, route }) {
   const { theme, isDarkMode, backendUserId, setDarkMode } = useTheme();
@@ -52,6 +52,25 @@ export default function SettingsScreen({ navigation, route }) {
   const [settings, setLocalSettings] = useState(userSettings);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [profilePictureUrl, setProfilePictureUrl] = useState(userSettings?.profilePictureUrl);
+
+  useFocusEffect(
+    useCallback(() => {
+      const userId = backendUserId ?? profile?.id;
+      if (!userId) return undefined;
+      let active = true;
+      getUserSettings(userId)
+        .then((result) => {
+          if (active) setProfilePictureUrl(result.profilePictureUrl);
+        })
+        .catch((error) => {
+          if (active) setErrorMessage(error.message);
+        });
+      return () => {
+        active = false;
+      };
+    }, [backendUserId, profile?.id]),
+  );
 
   async function handleDarkModeChange(darkmode) {
     const updatedSettings = {
@@ -89,7 +108,10 @@ export default function SettingsScreen({ navigation, route }) {
     setErrorMessage(null);
 
     try {
-      await saveUserSettings(updatedSettings);
+      await saveUserSettings({
+        user_id: backendUserId ?? settings.user_id,
+        ...(nativeLanguage ? { nativelanguageid: id } : { targetlanguageid: id }),
+      });
     } catch (error) {
       setErrorMessage(error.message);
     }
@@ -169,9 +191,12 @@ export default function SettingsScreen({ navigation, route }) {
           <TouchableOpacity
             style={[styles.profileCard, cardStyle]}
             activeOpacity={0.8}
+            onPress={() => navigation.navigate("ProfilePicture")}
+            accessibilityRole="button"
+            accessibilityLabel="Change profile picture"
           >
             <Image
-              source={user?.photoURL ? { uri: user.photoURL } : avatar}
+              source={getProfilePictureSource(profilePictureUrl, user?.photoURL)}
               style={styles.avatar}
             />
             <View style={styles.profileInfo}>
@@ -265,6 +290,12 @@ export default function SettingsScreen({ navigation, route }) {
             <View style={styles.divider} />
             <SettingRow iconName="shield-lock-outline" label="Data & Privacy" />
             <View style={styles.divider} />
+            <SettingRow
+              iconName="help-circle-outline"
+              label="Replay walkthrough"
+              onPress={() => navigation.dispatch(StackActions.popTo("Home", { replayWalkthrough: true }))}
+            />
+            <View style={styles.divider} />
             <SettingRow icon="ⓘ" label="About" />
           </View>
 
@@ -284,6 +315,26 @@ export default function SettingsScreen({ navigation, route }) {
                 }
               }}
             />
+            <View style={styles.divider} />
+            <TouchableOpacity
+              style={styles.settingRow}
+              onPress={() => navigation.navigate("DeleteAccount")}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Delete account"
+            >
+              <View style={styles.rowIcon}>
+                <MaterialCommunityIcons
+                  name="delete-outline"
+                  size={20}
+                  color={theme.colors.danger}
+                />
+              </View>
+              <Text style={[styles.rowLabel, { color: theme.colors.danger }]}>
+                Delete account
+              </Text>
+              <Text style={[styles.chevron, { color: CARD_TEXT_MUTED }]}>›</Text>
+            </TouchableOpacity>
           </View>
           {errorMessage ? (
             <Text style={[styles.accountError, { color: theme.colors.danger }]}>

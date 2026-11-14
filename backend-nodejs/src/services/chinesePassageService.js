@@ -2,7 +2,7 @@ const axios = require("axios");
 const { JSDOM } = require("jsdom");
 const { Readability } = require("@mozilla/readability");
 
-const passageRepository = require("../repositories/passageRepository");
+const passageRepository = require("../repositories/chinesePassageRepository");
 const extractParagraphs = require("../utils/extractParagraphs");
 
 const passageService = {

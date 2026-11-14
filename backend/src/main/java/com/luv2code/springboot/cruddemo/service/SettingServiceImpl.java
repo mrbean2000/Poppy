@@ -40,6 +40,8 @@ public class SettingServiceImpl implements SettingService {
 		settings.setDailyListeningGoal(theSettings.getDailyListeningGoal());
 		settings.setDateOfBirth(theSettings.getDateOfBirth());
 		settings.setPracticeRemindersEnabled(theSettings.getPracticeRemindersEnabled());
+		settings.setProfilePictureUrl(theSettings.getProfilePictureUrl());
+		settings.setHomeWalkthroughCompleted(Boolean.TRUE.equals(theSettings.getHomeWalkthroughCompleted()));
 		return settingsRepository.save(settings);
 	}
 
@@ -69,6 +71,12 @@ public class SettingServiceImpl implements SettingService {
 		}
 		if (theSettings.getPracticeRemindersEnabled() != null) {
 			settings.setPracticeRemindersEnabled(theSettings.getPracticeRemindersEnabled());
+		}
+		if (theSettings.hasProfilePictureUrl()) {
+			settings.setProfilePictureUrl(theSettings.getProfilePictureUrl());
+		}
+		if (theSettings.getHomeWalkthroughCompleted() != null) {
+			settings.setHomeWalkthroughCompleted(theSettings.getHomeWalkthroughCompleted());
 		}
 		return settingsRepository.save(settings);
 	}

@@ -1,0 +1,9 @@
+CREATE TABLE story_like_korean (
+                                   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                                   user_id INT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+                                   post_id BIGINT NOT NULL REFERENCES korean_passage(id) ON DELETE CASCADE,
+                                   liked BOOLEAN NOT NULL DEFAULT false,
+                                   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                   CONSTRAINT korean_user_post UNIQUE (user_id, post_id)
+);

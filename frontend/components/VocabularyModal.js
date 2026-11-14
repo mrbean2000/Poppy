@@ -3,6 +3,7 @@ import {
   Animated,
   Dimensions,
   Easing,
+  Linking,
   PanResponder,
   Pressable,
   ScrollView,
@@ -13,6 +14,7 @@ import {
 } from "react-native";
 import {
   getMandarinWordDefinition,
+  getJapaneseWordDefinition,
   recordVocabularyLookup,
 } from "../util/http";
 import { useTheme } from "../theme/ThemeContext";
@@ -22,6 +24,7 @@ const SLIDE_IN_MS = 240;
 
 export default function VocabularyModal({
   word,
+  language = "Chinese",
   userId = 1,
   onClose,
   onLookup,
@@ -31,6 +34,7 @@ export default function VocabularyModal({
   const [definition, setDefinition] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [lookupError, setLookupError] = useState(null);
   const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const closingRef = useRef(false);
   const touchingMeanings = useRef(false);
@@ -52,19 +56,66 @@ export default function VocabularyModal({
 
     setIsLoading(true);
     setErrorMessage(null);
+    setLookupError(null);
     setDefinition(null);
 
     const timer = setTimeout(async () => {
-      const [dictionaryResult, lookupResult] = await Promise.allSettled([
-        getMandarinWordDefinition(word),
-        recordVocabularyLookup(userId, word),
-      ]);
-
-      if (lookupResult.status === "fulfilled") {
-        onLookup?.(word, lookupResult.value?.statusLevel);
+      if (language === "Japanese") {
+        const [dictionaryResult, lookupResult] = await Promise.allSettled([
+          getJapaneseWordDefinition(word),
+          recordVocabularyLookup(userId, word, language),
+        ]);
+        if (!isCurrent) return;
+        if (lookupResult.status === "fulfilled") {
+          onLookup?.(word, lookupResult.value?.statusLevel);
+        } else {
+          setLookupError("Unable to save vocabulary lookup.");
+        }
+        try {
+          if (dictionaryResult.status === "rejected") throw dictionaryResult.reason;
+          const result = dictionaryResult.value;
+          if (
+            !Array.isArray(result?.entries) ||
+            result.entries.length === 0 ||
+            result.entries.some(
+              (entry) =>
+                !entry ||
+                !Array.isArray(entry.writtenForms) ||
+                !Array.isArray(entry.readings) ||
+                !Array.isArray(entry.definitions) ||
+                !Array.isArray(entry.senses) ||
+                entry.senses.some(
+                  (sense) =>
+                    !sense ||
+                    (sense.category !== null && typeof sense.category !== "string") ||
+                    !Array.isArray(sense.meanings) ||
+                    sense.meanings.some((meaning) => typeof meaning !== "string"),
+                ),
+            ) ||
+            typeof result.matchedWord !== "string"
+          ) {
+            throw new Error("The dictionary returned an invalid response.");
+          }
+          if (isCurrent) setDefinition(result);
+        } catch (error) {
+          if (isCurrent) setErrorMessage(error.message);
+        } finally {
+          if (isCurrent) setIsLoading(false);
+        }
+        return;
       }
 
+      const [dictionaryResult, lookupResult] = await Promise.allSettled([
+        getMandarinWordDefinition(word),
+        recordVocabularyLookup(userId, word, language),
+      ]);
+
       if (!isCurrent) return;
+      if (lookupResult.status === "fulfilled") {
+        onLookup?.(word, lookupResult.value?.statusLevel);
+      } else {
+        setLookupError("Unable to save vocabulary lookup.");
+      }
 
       if (dictionaryResult.status === "fulfilled") {
         setDefinition(dictionaryResult.value);
@@ -78,7 +129,7 @@ export default function VocabularyModal({
       isCurrent = false;
       clearTimeout(timer);
     };
-  }, [userId, word]);
+  }, [language, userId, word]);
 
   const closeSheet = useRef(() => {
     if (closingRef.current) return;
@@ -164,27 +215,39 @@ export default function VocabularyModal({
         </TouchableOpacity>
         <View style={styles.content}>
           <Text style={[styles.word, { color: colors.text }]}>{word}</Text>
-          {definition && definition.traditional !== definition.simplified && (
-            <Text
-              style={[styles.alternateWords, { color: colors.textSecondary }]}
-            >
-              {`${definition.traditional} / ${definition.simplified}`}
+          {lookupError && (
+            <Text accessibilityRole="alert" style={{ color: colors.danger }}>
+              {lookupError}
             </Text>
           )}
+          {language === "Chinese" &&
+            definition &&
+            definition.traditional !== definition.simplified && (
+              <Text
+                style={[styles.alternateWords, { color: colors.textSecondary }]}
+              >
+                {`${definition.traditional} / ${definition.simplified}`}
+              </Text>
+            )}
           <View style={styles.chipRow}>
             <View style={[styles.chip, { backgroundColor: colors.primary }]}>
               <Text style={[styles.chipText, { color: colors.primaryText }]}>
-                {definition?.formattedPinyin ||
-                  (isLoading ? "Looking up..." : "No pinyin")}
+                {language === "Japanese"
+                  ? definition?.entries?.[0]?.readings?.join(", ") ||
+                    (isLoading ? "Looking up..." : "No reading")
+                  : definition?.formattedPinyin ||
+                    (isLoading ? "Looking up..." : "No pinyin")}
               </Text>
             </View>
-            <View
-              style={[styles.chip, { backgroundColor: colors.greenPastel }]}
-            >
-              <Text style={[styles.categoryText, { color: colors.text }]}>
-                {(definition?.partOfSpeech || "DICTIONARY").toUpperCase()}
-              </Text>
-            </View>
+            {language === "Chinese" && (
+              <View
+                style={[styles.chip, { backgroundColor: colors.greenPastel }]}
+              >
+                <Text style={[styles.categoryText, { color: colors.text }]}>
+                  {(definition?.partOfSpeech || "DICTIONARY").toUpperCase()}
+                </Text>
+              </View>
+            )}
           </View>
           <View
             style={[
@@ -206,12 +269,64 @@ export default function VocabularyModal({
               }}
             >
               {isLoading ? (
-                <Text style={[styles.definition, { color: colors.textSecondary }]}>
+                <Text
+                  style={[styles.definition, { color: colors.textSecondary }]}
+                >
                   Looking up meaning...
                 </Text>
+              ) : language === "Japanese" && definition?.entries?.length ? (
+                <>
+                  {definition.matchedWord !== word && (
+                    <Text
+                      style={[
+                        styles.definition,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      Dictionary form: {definition.matchedWord}
+                    </Text>
+                  )}
+                  {definition.entries.map((entry, index) => (
+                    <View key={`${entry.id}-${index}`} style={styles.japaneseEntry}>
+                      {definition.entries.length > 1 && (
+                        <Text style={[styles.japaneseEntryTitle, { color: colors.textSecondary }]}>
+                          {entry.writtenForms.join(", ")}
+                          {entry.readings.length
+                            ? ` (${entry.readings.join(", ")})`
+                            : ""}
+                        </Text>
+                      )}
+                      {entry.senses.map((sense, senseIndex) => (
+                        <View key={senseIndex} style={styles.japaneseSense}>
+                          {sense.category && (
+                            <Text style={[styles.japaneseCategory, { color: colors.text }]}>
+                              {sense.category}
+                            </Text>
+                          )}
+                          <Text style={[styles.japaneseMeaning, { color: colors.text }]}>
+                            {senseIndex + 1}.{"  "}{sense.meanings.join("; ")}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  ))}
+                  {errorMessage && (
+                    <Text
+                      style={[
+                        styles.definition,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      {errorMessage}
+                    </Text>
+                  )}
+                </>
               ) : definition?.definitions?.length ? (
                 definition.definitions.map((meaning, index) => (
-                  <View key={`${meaning}-${index}`} style={styles.definitionRow}>
+                  <View
+                    key={`${meaning}-${index}`}
+                    style={styles.definitionRow}
+                  >
                     <View
                       style={[
                         styles.indexBadge,
@@ -219,20 +334,28 @@ export default function VocabularyModal({
                       ]}
                     >
                       <Text
-                        style={[styles.indexText, { color: colors.primaryText }]}
+                        style={[
+                          styles.indexText,
+                          { color: colors.primaryText },
+                        ]}
                       >
                         {index + 1}
                       </Text>
                     </View>
                     <Text
-                      style={[styles.definition, { color: colors.text, flex: 1 }]}
+                      style={[
+                        styles.definition,
+                        { color: colors.text, flex: 1 },
+                      ]}
                     >
                       {meaning}
                     </Text>
                   </View>
                 ))
               ) : (
-                <Text style={[styles.definition, { color: colors.textSecondary }]}>
+                <Text
+                  style={[styles.definition, { color: colors.textSecondary }]}
+                >
                   {errorMessage}
                 </Text>
               )}
@@ -324,6 +447,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   meaningsScroll: { flexShrink: 1 },
+  japaneseEntry: { paddingVertical: 8 },
+  japaneseEntryTitle: { fontSize: 14, fontWeight: "700", marginBottom: 8 },
+  japaneseSense: { marginBottom: 12 },
+  japaneseCategory: { fontSize: 13, fontWeight: "700", marginBottom: 4 },
+  japaneseMeaning: { fontSize: 17, lineHeight: 25 },
   definitionRow: {
     flexDirection: "row",
     alignItems: "flex-start",

@@ -1,6 +1,9 @@
 // src/screens/HomeScreen.js
 
 import {
+  Animated,
+  BackHandler,
+  PanResponder,
   SafeAreaView,
   View,
   Text,
@@ -9,76 +12,204 @@ import {
   StyleSheet,
   Image,
   ImageBackground,
+  useWindowDimensions,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {
   getLastReadPassageByUserId,
+  getRandomQuote,
   getTodayCompletedCount,
   getUserProfileByFirebaseUid,
   getUserVocabulary,
   getUserSettings,
   recordLoginStreak,
 } from "../util/http";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useFocusEffect } from "@react-navigation/native";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useFocusEffect, useIsFocused } from "@react-navigation/native";
 import { useAuth } from "../context/AuthContext";
-import { usePodcastPlayback } from "../components/PodcastPlaybackContext";
 import { useOnboardingSelections } from "../context/OnboardingSelectionContext";
 import { useTheme } from "../theme/ThemeContext";
+import HomeRecentPanel from "../components/HomeRecentPanel";
+import { HomePanelContext } from "../context/HomePanelContext";
+import { getProfilePictureSource } from "../util/profilePictures";
+import { useHomeWalkthrough, useWalkthroughScreen, WalkthroughStep, WalkthroughTouchable } from "../context/HomeWalkthroughContext";
 
-export default function HomeScreen({ navigation }) {
+const fallbackPassageImages = [
+  require("../assets/images/masot/poppy_superman.png"),
+  require("../assets/images/masot/poppy_wonderwoman.png"),
+  require("../assets/images/masot/poppy_batman.png"),
+];
+
+export default function HomeScreen({ navigation, route }) {
   const { isDarkMode, theme } = useTheme();
-  const { signOut, user } = useAuth();
-  const { clearEpisode } = usePodcastPlayback();
+  const { user } = useAuth();
   const { selections } = useOnboardingSelections();
   const [settings, setSettings] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [lastReadPassage, setLastReadPassage] = useState(null);
+  const [quote, setQuote] = useState(null);
+  const [quoteError, setQuoteError] = useState(null);
+  const [quoteLoading, setQuoteLoading] = useState(true);
+  const [quoteAttempt, setQuoteAttempt] = useState(0);
+  const [fallbackPassageImage] = useState(
+    () =>
+      fallbackPassageImages[
+        Math.floor(Math.random() * fallbackPassageImages.length)
+      ],
+  );
   const [vocabularyCount, setVocabularyCount] = useState(0);
   const [completedToday, setCompletedToday] = useState(0);
   const [loginStreak, setLoginStreak] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
-  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [profileLoadFailed, setProfileLoadFailed] = useState(false);
+  const [profileLoadAttempt, setProfileLoadAttempt] = useState(0);
   const dailyGoal = settings?.dailyReadingGoal ?? 10;
   const goalPercent =
     dailyGoal > 0
       ? Math.min(100, Math.round((completedToday / dailyGoal) * 100))
       : 0;
   const profileIdRef = useRef(null);
+  const lastReadRequestRef = useRef(0);
+  const scrollRef = useRef(null);
+  const autoWalkthroughAttempted = useRef(false);
+  const focused = useIsFocused();
+  const { begin, interruptions, foreground, active: walkthroughActive } = useHomeWalkthrough();
+  const { track, trackContainer } = useWalkthroughScreen("Home", scrollRef);
+  const { width } = useWindowDimensions();
+  const panelWidth = width * 0.8;
+  const panelOffset = useRef(new Animated.Value(0)).current;
+  const setGlobalPanelOpen = useContext(HomePanelContext);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const panelOpenRef = useRef(false);
 
-  async function handleSignOut() {
-    setIsSigningOut(true);
-    setErrorMessage(null);
-    try {
-      await clearEpisode();
-      await signOut();
-    } catch (error) {
-      setErrorMessage(error.message);
-    } finally {
-      setIsSigningOut(false);
+  const setPanelVisible = useCallback((visible) => {
+    panelOpenRef.current = visible;
+    setPanelOpen(visible);
+    setGlobalPanelOpen(visible);
+    Animated.timing(panelOffset, {
+      toValue: visible ? panelWidth : 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+  }, [panelOffset, panelWidth, setGlobalPanelOpen]);
+
+  const panelResponder = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponderCapture: (_, gesture) =>
+      focused &&
+      !walkthroughActive &&
+      gesture.numberActiveTouches === 1 &&
+      Math.abs(gesture.dx) > 15 &&
+      Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5 &&
+      (panelOpenRef.current ? gesture.dx < 0 : gesture.dx > 0),
+    onPanResponderGrant: () => panelOffset.stopAnimation(),
+    onPanResponderMove: (_, gesture) => {
+      const start = panelOpenRef.current ? panelWidth : 0;
+      panelOffset.setValue(Math.max(0, Math.min(panelWidth, start + gesture.dx)));
+    },
+    onPanResponderRelease: (_, gesture) => {
+      const start = panelOpenRef.current ? panelWidth : 0;
+      const position = Math.max(0, Math.min(panelWidth, start + gesture.dx));
+      setPanelVisible(
+        Math.abs(gesture.vx) > 0.5 ? gesture.vx > 0 : position > panelWidth / 2,
+      );
+    },
+    onPanResponderTerminate: () => setPanelVisible(panelOpenRef.current),
+  }), [focused, walkthroughActive, panelOffset, panelWidth, setPanelVisible]);
+
+  useEffect(() => {
+    if (!focused || walkthroughActive) setPanelVisible(false);
+  }, [focused, walkthroughActive, setPanelVisible]);
+
+  useEffect(() => {
+    if (panelOpenRef.current) panelOffset.setValue(panelWidth);
+  }, [panelOffset, panelWidth]);
+
+  useEffect(() => () => setGlobalPanelOpen(false), [setGlobalPanelOpen]);
+
+  useEffect(() => {
+    if (!focused || !panelOpen) return undefined;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      setPanelVisible(false);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [focused, panelOpen, setPanelVisible]);
+
+  useEffect(() => {
+    if (interruptions > 0) autoWalkthroughAttempted.current = false;
+  }, [interruptions]);
+
+  useEffect(() => {
+    if (!focused || !foreground || !settings?.user_id) return;
+    if (route.params?.replayWalkthrough) {
+      if (typeof settings.homeWalkthroughCompleted !== "boolean") {
+        setErrorMessage("Walkthrough settings are unavailable. Update the backend and try again.");
+        navigation.setParams({ replayWalkthrough: false });
+        return;
+      }
+      if (begin(settings.user_id, settings.homeWalkthroughCompleted === true)) {
+        autoWalkthroughAttempted.current = true;
+        navigation.setParams({ replayWalkthrough: false });
+      }
+    } else if (settings.homeWalkthroughCompleted === false && !autoWalkthroughAttempted.current) {
+      autoWalkthroughAttempted.current = begin(settings.user_id, false);
     }
-  }
+  }, [begin, focused, foreground, interruptions, navigation, route.params?.replayWalkthrough, settings]);
+
+  useEffect(() => {
+    let active = true;
+    setQuoteLoading(true);
+    setQuoteError(null);
+    getRandomQuote()
+      .then((result) => {
+        if (active) setQuote(result);
+      })
+      .catch((error) => {
+        if (active) setQuoteError(error.message);
+      })
+      .finally(() => {
+        if (active) setQuoteLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [quoteAttempt]);
 
   async function fetchUserSettings(userId) {
     try {
       setIsLoading(true);
       const userSettings = await getUserSettings(userId);
-      console.log(userSettings)
+      console.log(userSettings);
       setSettings(userSettings);
+      setProfileLoadFailed(false);
+      return userSettings;
     } catch (error) {
       setErrorMessage(error.message);
+      setProfileLoadFailed(true);
     } finally {
       setIsLoading(false);
     }
   }
 
-  async function fetchLastReadPassage(userId) {
+  async function fetchLastReadPassage(userId, targetLanguageId) {
+    const requestId = ++lastReadRequestRef.current;
+    setLastReadPassage(null);
     try {
-      const passage = await getLastReadPassageByUserId(userId);
-      setLastReadPassage(passage);
+      const passage = await getLastReadPassageByUserId(
+        userId,
+        targetLanguageId,
+      );
+      if (requestId === lastReadRequestRef.current) setLastReadPassage(passage);
     } catch (error) {
-      setErrorMessage(error.message);
+      if (requestId === lastReadRequestRef.current)
+        setErrorMessage(error.message);
     }
+  }
+
+  async function fetchSettingsAndLastReadPassage(userId) {
+    const userSettings = await fetchUserSettings(userId);
+    await fetchLastReadPassage(userId, userSettings?.targetlanguageid);
   }
 
   async function fetchCompletedToday(userId) {
@@ -109,32 +240,39 @@ export default function HomeScreen({ navigation }) {
 
   useEffect(() => {
     if (!user?.uid) return;
+    let active = true;
 
     async function loadUserData() {
       try {
         const profile = await getUserProfileByFirebaseUid(user.uid);
+        if (!active) return;
         if (!profile?.id) {
           throw new Error("Your profile does not have a database user ID.");
         }
+        setProfile({ uid: user.uid, data: profile });
         profileIdRef.current = profile.id;
-        fetchUserSettings(profile.id);
-        fetchLastReadPassage(profile.id);
+        fetchSettingsAndLastReadPassage(profile.id);
         fetchCompletedToday(profile.id);
         fetchVocabularyCount(profile.id);
         fetchLoginStreak(user.uid);
       } catch (error) {
+        if (!active) return;
         setErrorMessage(error.message);
+        setProfileLoadFailed(true);
       }
     }
 
     loadUserData();
-  }, [user?.uid]);
+    return () => {
+      active = false;
+    };
+  }, [user?.uid, profileLoadAttempt]);
 
   // Refresh "Continue Reading" whenever Home regains focus (e.g. after the reader).
   useFocusEffect(
     useCallback(() => {
       if (profileIdRef.current) {
-        fetchLastReadPassage(profileIdRef.current);
+        fetchSettingsAndLastReadPassage(profileIdRef.current);
         fetchCompletedToday(profileIdRef.current);
         fetchVocabularyCount(profileIdRef.current);
       }
@@ -142,6 +280,17 @@ export default function HomeScreen({ navigation }) {
   );
 
   return (
+    <View style={styles.container} {...panelResponder.panHandlers}>
+      <HomeRecentPanel
+        visible={panelOpen && focused}
+        width={panelWidth}
+        user={user}
+        profile={profile?.uid === user?.uid ? profile.data : null}
+        profilePictureUrl={settings?.profilePictureUrl}
+        onClose={() => setPanelVisible(false)}
+        navigation={navigation}
+      />
+      <Animated.View style={[styles.container, { transform: [{ translateX: panelOffset }] }]}>
     <ImageBackground
       source={
         isDarkMode
@@ -155,12 +304,34 @@ export default function HomeScreen({ navigation }) {
         style={[styles.container, { backgroundColor: "transparent" }]}
       >
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
         >
           {/* Header */}
 
-          <View style={styles.header}>
+          <View style={styles.header} onLayout={trackContainer("header")}>
+            <TouchableOpacity
+              onPress={() => setPanelVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Open recent history"
+            >
+              <MaterialCommunityIcons name="menu" size={26} color={theme.colors.text} />
+            </TouchableOpacity>
+            <WalkthroughStep name="profile">
+              <WalkthroughTouchable
+                style={styles.avatar}
+                onLayout={track("profile", "header")}
+                onPress={() => navigation.navigate("ProfilePicture")}
+                accessibilityRole="button"
+                accessibilityLabel="Change profile picture"
+              >
+                <Image
+                  source={getProfilePictureSource(settings?.profilePictureUrl)}
+                  style={styles.profileImage}
+                />
+              </WalkthroughTouchable>
+            </WalkthroughStep>
             <View style={styles.greetingBlock}>
               <Text style={[styles.greeting, { color: theme.colors.text }]}>
                 Welcome back
@@ -169,38 +340,27 @@ export default function HomeScreen({ navigation }) {
                 Ready to learn?
               </Text>
             </View>
-            <View style={styles.headerActions}>
-              <View style={styles.avatar}>
-                <Image
-                  source={require("../assets/images/masot/poppy_raincoat.jpeg")}
-                  style={styles.profileImage}
-                />
-              </View>
-              <TouchableOpacity
-                style={[
-                  styles.signOutButton,
-                  {
-                    backgroundColor: theme.colors.surface,
-                  },
-                ]}
-                onPress={handleSignOut}
-                disabled={isSigningOut}
-                accessibilityRole="button"
-                accessibilityLabel="Log out"
-              >
-                <MaterialCommunityIcons
-                  name="logout"
-                  size={20}
-                  color={theme.colors.text}
-                />
-              </TouchableOpacity>
-            </View>
           </View>
 
           {errorMessage ? (
             <Text style={[styles.errorMessage, { color: theme.colors.danger }]}>
               {errorMessage}
             </Text>
+          ) : null}
+          {profileLoadFailed ? (
+            <TouchableOpacity
+              onPress={() => {
+                setErrorMessage(null);
+                setProfileLoadFailed(false);
+                setProfileLoadAttempt((attempt) => attempt + 1);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading profile and settings"
+            >
+              <Text style={{ color: theme.colors.text, marginBottom: 12, fontWeight: "700" }}>
+                Retry loading profile and settings
+              </Text>
+            </TouchableOpacity>
           ) : null}
 
           {/* Daily Goal */}
@@ -266,7 +426,9 @@ export default function HomeScreen({ navigation }) {
 
           {/* Language selector */}
 
-          <TouchableOpacity
+          <WalkthroughStep name="language">
+          <WalkthroughTouchable
+            onLayout={track("language")}
             style={[
               styles.languageSelector,
               {
@@ -302,11 +464,12 @@ export default function HomeScreen({ navigation }) {
             >
               ›
             </Text>
-          </TouchableOpacity>
+          </WalkthroughTouchable>
+          </WalkthroughStep>
 
           {/* Continue Reading */}
 
-          <View style={styles.sectionHeader}>
+          <View style={styles.sectionHeader} onLayout={trackContainer("storiesHeader")}>
             <View style={styles.sectionTitleGroup}>
               <Image
                 source={require("../assets/icons/book-icon.png")}
@@ -324,9 +487,11 @@ export default function HomeScreen({ navigation }) {
               </Text>
             </View>
 
-            <TouchableOpacity onPress={() => navigation.navigate("Stories")}>
+            <WalkthroughStep name="stories">
+            <WalkthroughTouchable onLayout={track("stories", "storiesHeader")} onPress={() => navigation.navigate("Stories")}>
               <Text style={styles.seeAll}>See all ›</Text>
-            </TouchableOpacity>
+            </WalkthroughTouchable>
+            </WalkthroughStep>
           </View>
 
           <TouchableOpacity
@@ -352,7 +517,7 @@ export default function HomeScreen({ navigation }) {
                 source={
                   lastReadPassage?.imageUrl
                     ? { uri: lastReadPassage.imageUrl }
-                    : require("../assets/images/masot/poppy_raincoat.jpeg")
+                    : fallbackPassageImage
                 }
                 style={
                   lastReadPassage?.imageUrl
@@ -385,8 +550,10 @@ export default function HomeScreen({ navigation }) {
 
           {/* Quick Actions */}
 
-          <View style={styles.grid}>
-            <TouchableOpacity
+          <View style={styles.grid} onLayout={trackContainer("grid")}>
+            <WalkthroughStep name="vocabulary">
+            <WalkthroughTouchable
+              onLayout={track("vocabulary", "grid")}
               style={[styles.quickCard, { backgroundColor: "#FAC048" }]}
               onPress={() => navigation.navigate("Vocabulary")}
             >
@@ -404,9 +571,12 @@ export default function HomeScreen({ navigation }) {
               <Text style={[styles.quickSubtitle, { color: "#000000" }]}>
                 {vocabularyCount} {vocabularyCount === 1 ? "word" : "words"}
               </Text>
-            </TouchableOpacity>
+            </WalkthroughTouchable>
+            </WalkthroughStep>
 
-            <TouchableOpacity
+            <WalkthroughStep name="flashcards">
+            <WalkthroughTouchable
+              onLayout={track("flashcards", "grid")}
               style={[
                 styles.quickCard,
                 styles.quickCardCentered,
@@ -436,9 +606,12 @@ export default function HomeScreen({ navigation }) {
                   </Text> */}
                 </View>
               </View>
-            </TouchableOpacity>
+            </WalkthroughTouchable>
+            </WalkthroughStep>
 
-            <TouchableOpacity
+            <WalkthroughStep name="settings">
+            <WalkthroughTouchable
+              onLayout={track("settings", "grid")}
               style={[
                 styles.quickCard,
                 styles.quickCardCentered,
@@ -457,9 +630,12 @@ export default function HomeScreen({ navigation }) {
                   Settings
                 </Text>
               </View>
-            </TouchableOpacity>
+            </WalkthroughTouchable>
+            </WalkthroughStep>
 
-            <TouchableOpacity
+            <WalkthroughStep name="podcast">
+            <WalkthroughTouchable
+              onLayout={track("podcast", "grid")}
               style={[
                 styles.quickCard,
                 styles.quickCardCentered,
@@ -480,11 +656,51 @@ export default function HomeScreen({ navigation }) {
                   </Text>
                 </View>
               </View>
-            </TouchableOpacity>
+            </WalkthroughTouchable>
+            </WalkthroughStep>
+          </View>
+
+          <View
+            style={[
+              styles.quoteCard,
+              { backgroundColor: isDarkMode ? "#f0e6d8" : "#FFF4E6" },
+            ]}
+          >
+            <Text style={styles.quoteHeading}>A little inspiration</Text>
+            {quoteLoading ? (
+              <Text style={styles.quoteText}>Loading quote...</Text>
+            ) : quoteError ? (
+              <>
+                <Text style={styles.quoteError}>{quoteError}</Text>
+                <TouchableOpacity
+                  onPress={() => setQuoteAttempt((attempt) => attempt + 1)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry loading quote"
+                >
+                  <Text style={styles.quoteRetry}>Try again</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.quoteText}>{quote?.quote}</Text>
+                <Text style={styles.quoteAuthor}>— {quote?.quoter}</Text>
+              </>
+            )}
           </View>
         </ScrollView>
       </SafeAreaView>
     </ImageBackground>
+        {panelOpen ? (
+          <TouchableOpacity
+            style={styles.panelBackdrop}
+            activeOpacity={1}
+            onPress={() => setPanelVisible(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Close recent panel"
+          />
+        ) : null}
+      </Animated.View>
+    </View>
   );
 }
 
@@ -495,6 +711,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "transparent",
+  },
+  panelBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.3)",
   },
 
   content: {
@@ -508,11 +728,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 24,
-  },
-
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
     gap: 10,
   },
 
@@ -520,16 +735,42 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  signOutButton: {
-    alignItems: "center",
-    justifyContent: "center",
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-  },
-
   errorMessage: {
     marginBottom: 12,
+  },
+
+  quoteCard: {
+    borderRadius: 24,
+    padding: 20,
+    marginTop: 16,
+  },
+  quoteHeading: {
+    color: "#000000",
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  quoteText: {
+    color: "#172033",
+    fontSize: 16,
+    lineHeight: 23,
+    marginTop: 8,
+  },
+  quoteAuthor: {
+    color: "#4B5563",
+    fontSize: 14,
+    fontWeight: "700",
+    marginTop: 8,
+  },
+  quoteError: {
+    color: "#8B1E1E",
+    fontSize: 14,
+    marginTop: 8,
+  },
+  quoteRetry: {
+    color: "#075BE8",
+    fontSize: 14,
+    fontWeight: "700",
+    marginTop: 8,
   },
 
   profileImage: {
@@ -554,6 +795,8 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
+    borderWidth: 2,
+    borderColor: "#FFD044",
     backgroundColor: "#FFFCF5",
     justifyContent: "center",
     alignItems: "center",

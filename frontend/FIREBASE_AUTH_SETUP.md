@@ -37,14 +37,27 @@ Facebook sign-in is available on both the login and create-account screens.
 Signing in is required to enter the app, and the Settings screen provides
 sign-out.
 
+## Recent history sync
+
+The Home screen's recent-history panel stores up to 50 podcasts and 50
+articles per account in PostgreSQL. Apply
+[`create_recent_history.sql`](../backend/sql-scripts/create_recent_history.sql)
+to the configured database. The app supplies the signed-in account's UID to
+look up the corresponding PostgreSQL user; the backend does not verify a token.
+Anyone with API access and a user's UID can read or change that user's history.
+Restrict access at a trusted gateway or add server-side authentication before
+exposing the API to untrusted clients. Saving and loading history requires a
+connection to the backend.
+Set `EXPO_PUBLIC_HISTORY_API_URL` in the frontend environment to the HTTPS
+Spring API base URL (including `/api`). Plain HTTP is permitted only for
+`localhost` or `127.0.0.1`; physical devices need an HTTPS-accessible backend.
+
+Existing Firestore history is not automatically migrated or deleted; the
+PostgreSQL lists start empty until new activity is recorded.
+
 For password recovery, enable the Email/Password provider and configure the
 password reset email template in **Authentication → Templates**. On the login
 screen, choose **Forgot password?**, enter the account email, and use the link
 in the Firebase email to set a new password. The confirmation does not disclose
 whether an account exists; check the spam folder if the email does not arrive.
 Accounts using only a social provider should continue using that provider.
-
-The existing Spring API still uses its existing numeric user IDs. Firebase
-authentication does not yet link a Firebase UID to those backend users, so
-Firebase login alone does not make the app's existing backend data
-user-specific.

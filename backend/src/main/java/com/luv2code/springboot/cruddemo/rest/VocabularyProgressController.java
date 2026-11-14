@@ -11,6 +11,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/users/{userId}/vocabulary")
@@ -23,34 +26,41 @@ public class VocabularyProgressController {
     }
 
     @GetMapping
-    public java.util.List<VocabularyStatusDto> getVocabulary(@PathVariable Long userId) {
-        return vocabularyProgressService.getVocabulary(userId);
+    public java.util.List<VocabularyStatusDto> getVocabulary(@PathVariable Long userId,
+            @RequestParam(name = "language", required = false) String language) {
+        return vocabularyProgressService.getVocabulary(userId, language);
     }
 
     @PostMapping("/{word}/lookup")
     public VocabularyStatusDto recordLookup(
             @PathVariable Long userId,
-            @PathVariable String word) {
-        return vocabularyProgressService.recordLookup(userId, word);
+            @PathVariable String word,
+            @RequestParam(name = "language", required = false) String language) {
+        return vocabularyProgressService.recordLookup(userId, word, language);
     }
 
     @PutMapping("/{word}/status")
     public VocabularyStatusDto updateStatus(
             @PathVariable Long userId,
             @PathVariable String word,
-            @RequestBody VocabularyStatusRequest request) {
-        return vocabularyProgressService.updateStatus(userId, word, request.statusLevel());
+            @RequestBody VocabularyStatusRequest request,
+            @RequestParam(name = "language", required = false) String language) {
+        if (request.statusLevel() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A status level is required.");
+        }
+        return vocabularyProgressService.updateStatus(userId, word, request.statusLevel(), language);
     }
 
     @PutMapping("/{word}/favorite")
     public VocabularyStatusDto updateFavorite(
             @PathVariable Long userId,
             @PathVariable String word,
-            @RequestBody VocabularyFavoriteRequest request) {
+            @RequestBody VocabularyFavoriteRequest request,
+            @RequestParam(name = "language", required = false) String language) {
         if (request.favorite() == null) {
-            throw new IllegalArgumentException("A favorite value is required.");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A favorite value is required.");
         }
         return vocabularyProgressService.updateFavorite(
-                userId, word, request.favorite());
+                userId, word, request.favorite(), language);
     }
 }

@@ -13,7 +13,7 @@ public interface PassageService {
 
     List<PassageTitleOnlyDto> findAllTitleOnly();
 
-    PassageOnlyDto findById(int theId);
+    PassageOnlyDto findById(long theId, String language);
     List<String> getSegmentedPassageBy(int theId);
     List<SegmentedWordDto> getSegmentedPassageWithPinyin(int theId);
     List<SegmentedWordDto> getSegmentedPassageWithPinyin(int theId, Long userId);

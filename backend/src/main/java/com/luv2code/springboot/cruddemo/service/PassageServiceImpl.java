@@ -1,6 +1,8 @@
 package com.luv2code.springboot.cruddemo.service;
 
 import com.hankcs.hanlp.HanLP;
+import com.luv2code.springboot.cruddemo.dao.JapanesePassageRepository;
+import com.luv2code.springboot.cruddemo.dao.KoreanPassageRepository;
 import com.luv2code.springboot.cruddemo.dao.PassageRepository;
 import com.luv2code.springboot.cruddemo.dao.UserPassageRepository;
 import com.luv2code.springboot.cruddemo.dto.PassageDto;
@@ -11,8 +13,10 @@ import com.luv2code.springboot.cruddemo.entity.Passage;
 import com.luv2code.springboot.cruddemo.entity.UserPassage;
 import com.luv2code.springboot.cruddemo.exception.ResourceNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Optional;
@@ -21,6 +25,8 @@ import java.util.Optional;
 public class PassageServiceImpl implements PassageService {
 
     private PassageRepository passageRepository;
+    private JapanesePassageRepository japanesePassageRepository;
+    private KoreanPassageRepository koreanPassageRepository;
     private UserPassageRepository userPassageRepository;
     private DictionaryService dictionaryService;
     private VocabularyProgressService vocabularyProgressService;
@@ -28,10 +34,14 @@ public class PassageServiceImpl implements PassageService {
     @Autowired
     public PassageServiceImpl(
             PassageRepository thePassageRepository,
+            JapanesePassageRepository theJapanesePassageRepository,
+            KoreanPassageRepository theKoreanPassageRepository,
             UserPassageRepository theUserPassageRepository,
             DictionaryService theDictionaryService,
             VocabularyProgressService theVocabularyProgressService) {
         passageRepository = thePassageRepository;
+        japanesePassageRepository = theJapanesePassageRepository;
+        koreanPassageRepository = theKoreanPassageRepository;
         userPassageRepository = theUserPassageRepository;
         dictionaryService = theDictionaryService;
         vocabularyProgressService = theVocabularyProgressService;
@@ -43,15 +53,27 @@ public class PassageServiceImpl implements PassageService {
     }
 
     @Override
-    public PassageOnlyDto findById(int theId) {
-        Passage passage = passageRepository.findById(theId).orElse(null);
-
-        if(passage == null){
-         // we didn't find the employee
-            throw new RuntimeException("Passage not found");
+    public PassageOnlyDto findById(long theId, String language) {
+        if (language == null || language.equalsIgnoreCase("Chinese")) {
+            if (theId <= 0 || theId > Integer.MAX_VALUE) {
+                throw new ResourceNotFoundException("Passage not found");
+            }
+            Passage passage = passageRepository.findById((int) theId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Passage not found"));
+            return new PassageOnlyDto(passage.getId(), passage.getPassage());
         }
-
-        return new PassageOnlyDto(passage.getId(), passage.getPassage());
+        if (language.equalsIgnoreCase("Japanese")) {
+            var passage = japanesePassageRepository.findById(theId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Passage not found"));
+            return new PassageOnlyDto(passage.getId(), passage.getPassage());
+        }
+        if (language.equalsIgnoreCase("Korean")) {
+            var passage = koreanPassageRepository.findById(theId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Passage not found"));
+            return new PassageOnlyDto(passage.getId(), passage.getPassage());
+        }
+        throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST, "Language must be Chinese, Japanese or Korean.");
     }
 
     @Override
@@ -91,7 +113,7 @@ public class PassageServiceImpl implements PassageService {
         List<String> words = getSegmentedPassageBy(theId);
         var statusLevels = userId == null
                 ? java.util.Map.<String, Integer>of()
-                : vocabularyProgressService.getStatusLevels(userId, words);
+                : vocabularyProgressService.getStatusLevels(userId, words, "Chinese");
 
         return words.stream()
                 .map(word -> {

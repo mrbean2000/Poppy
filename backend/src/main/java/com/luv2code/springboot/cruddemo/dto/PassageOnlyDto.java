@@ -1,14 +1,14 @@
 package com.luv2code.springboot.cruddemo.dto;
 
 public class PassageOnlyDto {
-    private int id;
+    private long id;
     private String passage;
 
-    public int getId() {
+    public long getId() {
         return id;
     }
 
-    public void setId(int id) {
+    public void setId(long id) {
         this.id = id;
     }
 
@@ -20,7 +20,7 @@ public class PassageOnlyDto {
         this.passage = passage;
     }
 
-    public PassageOnlyDto(int id, String passage) {
+    public PassageOnlyDto(long id, String passage) {
         this.id = id;
         this.passage = passage;
     }

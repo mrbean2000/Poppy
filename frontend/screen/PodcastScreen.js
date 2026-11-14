@@ -1,6 +1,7 @@
 ﻿import { useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   ImageBackground,
@@ -13,11 +14,17 @@ import {
   View,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { setAudioModeAsync } from "expo-audio";
 import { getPodcastEpisodes, searchPodcasts } from "../util/http";
+import { usePodcastPlayback } from "../components/PodcastPlaybackContext";
+import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../theme/ThemeContext";
+import { recordRecentPodcast } from "../util/recentHistory";
 
 export default function PodcastScreen({ navigation }) {
   const { theme, isDarkMode } = useTheme();
+  const { user } = useAuth();
+  const { player, status, currentPodcast, loadEpisode } = usePodcastPlayback();
   const itemBackground = isDarkMode ? "#000000" : "#FFFFFF";
   const [searchQuery, setSearchQuery] = useState("");
   const [searchType, setSearchType] = useState("channel");
@@ -31,6 +38,66 @@ export default function PodcastScreen({ navigation }) {
   const searchRequestRef = useRef(0);
   const episodeRequestRef = useRef(0);
   const resultsScrollRef = useRef(null);
+  const playbackRequestRef = useRef(false);
+
+  async function toggleEpisode(channel, episode) {
+    if (playbackRequestRef.current) return;
+    playbackRequestRef.current = true;
+    try {
+      const isCurrent = currentPodcast?.episode?.episodeUrl === episode.episodeUrl;
+      if (isCurrent && status.playing) {
+        player.pause();
+        return;
+      }
+
+      await setAudioModeAsync({ playsInSilentMode: true });
+      loadEpisode(channel, episode);
+      if (isCurrent && status.didJustFinish) await player.seekTo(0);
+      player.play();
+      if (!isCurrent) {
+        recordRecentPodcast(user?.uid, channel, episode).catch((error) => {
+          console.warn("Unable to save recent podcast:", error);
+          Alert.alert("Recent podcasts", error.message);
+        });
+      }
+    } catch (error) {
+      Alert.alert(
+        "Playback unavailable",
+        error instanceof Error ? error.message : "Unable to play this podcast episode.",
+      );
+    } finally {
+      playbackRequestRef.current = false;
+    }
+  }
+
+  function renderPlaybackButton(channel, episode) {
+    const playable = Boolean(episode.episodeUrl);
+    const playing =
+      playable &&
+      currentPodcast?.episode?.episodeUrl === episode.episodeUrl &&
+      status.playing;
+
+    return (
+      <TouchableOpacity
+        style={[styles.playbackButton, !playable && styles.playbackButtonDisabled]}
+        onPress={() => toggleEpisode(channel, episode)}
+        disabled={!playable}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: !playable }}
+        accessibilityLabel={
+          playable
+            ? `${playing ? "Pause" : "Play"} ${episode.trackName || "podcast episode"}`
+            : `Audio unavailable for ${episode.trackName || "podcast episode"}`
+        }
+      >
+        <MaterialCommunityIcons
+          name={playing ? "pause-circle" : "play-circle"}
+          size={36}
+          color={theme.colors.primary}
+        />
+      </TouchableOpacity>
+    );
+  }
 
   async function handleSearch() {
     Keyboard.dismiss();
@@ -307,6 +374,7 @@ export default function PodcastScreen({ navigation }) {
                 .join(" Â· ") || "Podcast episode"}
             </Text>
           </View>
+          {renderPlaybackButton(selectedChannel, item)}
         </View>
       );
     }
@@ -398,7 +466,7 @@ export default function PodcastScreen({ navigation }) {
             size={22}
             color={theme.colors.textSecondary}
           />
-        ) : null}
+        ) : renderPlaybackButton(item, item)}
       </TouchableOpacity>
     );
   }
@@ -780,6 +848,13 @@ const styles = StyleSheet.create({
   },
   artworkPlaceholder: { alignItems: "center", justifyContent: "center" },
   podcastInfo: { flex: 1, marginHorizontal: 12 },
+  playbackButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  playbackButtonDisabled: { opacity: 0.4 },
   podcastTitle: { fontSize: 15, fontWeight: "800", lineHeight: 20 },
   podcastArtist: { marginTop: 4, fontSize: 13 },
   podcastGenre: {

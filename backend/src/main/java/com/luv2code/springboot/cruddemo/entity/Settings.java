@@ -39,6 +39,12 @@ public class Settings {
     @Column(name = "practice_reminders_enabled")
     private Boolean practiceRemindersEnabled;
 
+    @Column(name = "profile_picture_url", columnDefinition = "TEXT")
+    private String profilePictureUrl;
+
+    @Column(name = "home_walkthrough_completed", nullable = false)
+    private boolean homeWalkthroughCompleted;
+
     public int getId() {
         return id;
     }
@@ -109,5 +115,21 @@ public class Settings {
 
     public void setPracticeRemindersEnabled(Boolean practiceRemindersEnabled) {
         this.practiceRemindersEnabled = practiceRemindersEnabled;
+    }
+
+    public String getProfilePictureUrl() {
+        return profilePictureUrl;
+    }
+
+    public void setProfilePictureUrl(String profilePictureUrl) {
+        this.profilePictureUrl = profilePictureUrl;
+    }
+
+    public boolean isHomeWalkthroughCompleted() {
+        return homeWalkthroughCompleted;
+    }
+
+    public void setHomeWalkthroughCompleted(boolean homeWalkthroughCompleted) {
+        this.homeWalkthroughCompleted = homeWalkthroughCompleted;
     }
 }

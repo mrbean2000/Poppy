@@ -13,7 +13,12 @@ import { useCallback, useRef, useState } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import useContentSwipeBack from "../hooks/useContentSwipeBack";
 import { useTheme } from "../theme/ThemeContext";
-import { createPassage } from "../util/http";
+import {
+  createChinesePassage,
+  createJapanesePassage,
+  createKoreanPassage,
+  getUserSettings,
+} from "../util/http";
 
 export default function ImportUrlScreen({ navigation }) {
   const { theme, isDarkMode, backendUserId } = useTheme();
@@ -115,9 +120,23 @@ export default function ImportUrlScreen({ navigation }) {
 
     try {
       setIsSubmitting(true);
-      const createdPassage = await createPassage(trimmedUrl, backendUserId);
-      const importedPassage =
-        createdPassage.data.passage ?? createdPassage.data.passage;
+      const settings = await getUserSettings(backendUserId);
+      const targetLanguage = settings?.targetlanguage ?? "";
+      let createdPassage;
+
+      if (/japanese/i.test(targetLanguage)) {
+        createdPassage = await createJapanesePassage(trimmedUrl, backendUserId);
+      } else if (/korean/i.test(targetLanguage)) {
+        createdPassage = await createKoreanPassage(trimmedUrl, backendUserId);
+      } else if (/chinese|mandarin/i.test(targetLanguage)) {
+        createdPassage = await createChinesePassage(trimmedUrl, backendUserId);
+      } else {
+        Alert.alert(
+          "Unsupported language",
+          "URL import is only available for Chinese, Japanese and Korean.",
+        );
+        return;
+      }
       const passageId = createdPassage.data.id ?? createdPassage.data.passageId;
 
       if (!passageId) {
@@ -154,7 +173,9 @@ export default function ImportUrlScreen({ navigation }) {
             styles.content,
             {
               opacity: contentOpacity,
-              transform: [{ translateX: Animated.add(contentOffset, swipeOffset) }],
+              transform: [
+                { translateX: Animated.add(contentOffset, swipeOffset) },
+              ],
             },
           ]}
         >
@@ -177,9 +198,7 @@ export default function ImportUrlScreen({ navigation }) {
           <Text style={[styles.title, { color: theme.colors.text }]}>
             Import via URL
           </Text>
-          <Text
-            style={[styles.subtitle, { color: theme.colors.text }]}
-          >
+          <Text style={[styles.subtitle, { color: theme.colors.text }]}>
             Paste an article URL to import passage.
           </Text>
 

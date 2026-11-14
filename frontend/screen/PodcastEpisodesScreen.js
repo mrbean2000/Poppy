@@ -1,6 +1,7 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   ImageBackground,
   SafeAreaView,
@@ -11,23 +12,32 @@ import {
   View,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { setAudioModeAsync } from "expo-audio";
 import { getPodcastEpisodes } from "../util/http";
+import { usePodcastPlayback } from "../components/PodcastPlaybackContext";
+import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../theme/ThemeContext";
+import { recordRecentPodcast } from "../util/recentHistory";
 
 export default function PodcastEpisodesScreen({ navigation, route }) {
   const { theme, isDarkMode } = useTheme();
+  const { user } = useAuth();
+  const { player, status, currentPodcast, loadEpisode } = usePodcastPlayback();
   const itemBackground = isDarkMode ? "#000000" : "#FFFFFF";
   const channel = route.params?.channel;
   const [episodes, setEpisodes] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState(null);
+  const playbackRequestRef = useRef(false);
 
   useEffect(() => {
     let isCurrent = true;
 
     async function loadEpisodes() {
       if (!channel?.collectionId) {
-        setErrorMessage("This podcast channel does not have a valid iTunes ID.");
+        setErrorMessage(
+          "This podcast channel does not have a valid iTunes ID.",
+        );
         setIsLoading(false);
         return;
       }
@@ -48,6 +58,39 @@ export default function PodcastEpisodesScreen({ navigation, route }) {
     };
   }, [channel?.collectionId]);
 
+  async function toggleEpisode(episode) {
+    if (playbackRequestRef.current) return;
+    playbackRequestRef.current = true;
+    try {
+      const isCurrent =
+        currentPodcast?.episode?.episodeUrl === episode.episodeUrl;
+      if (isCurrent && status.playing) {
+        player.pause();
+        return;
+      }
+
+      await setAudioModeAsync({ playsInSilentMode: true });
+      loadEpisode(channel, episode);
+      if (isCurrent && status.didJustFinish) await player.seekTo(0);
+      player.play();
+      if (!isCurrent) {
+        recordRecentPodcast(user?.uid, channel, episode).catch((error) => {
+          console.warn("Unable to save recent podcast:", error);
+          Alert.alert("Recent podcasts", error.message);
+        });
+      }
+    } catch (error) {
+      Alert.alert(
+        "Playback unavailable",
+        error instanceof Error
+          ? error.message
+          : "Unable to play this podcast episode.",
+      );
+    } finally {
+      playbackRequestRef.current = false;
+    }
+  }
+
   const channelArtwork = channel?.artworkUrl600 || channel?.artworkUrl100;
 
   return (
@@ -60,177 +103,228 @@ export default function PodcastEpisodesScreen({ navigation, route }) {
       style={styles.container}
       resizeMode="cover"
     >
-    <SafeAreaView style={[styles.container, { backgroundColor: "transparent" }]}>
-      <View style={styles.fixedHeader}>
-        <TouchableOpacity
-          style={[
-            styles.backButton,
-            { backgroundColor: itemBackground },
-          ]}
-          onPress={() => navigation.goBack()}
-          accessibilityRole="button"
-          accessibilityLabel="Back to podcast search results"
-        >
-          <MaterialCommunityIcons
-            name="arrow-left"
-            size={22}
-            color={theme.colors.text}
-          />
-        </TouchableOpacity>
-        {channelArtwork ? (
-          <Image
-            source={{ uri: channelArtwork }}
-            style={styles.channelArtwork}
-            accessibilityLabel={`${channel?.collectionName || "Podcast"} cover art`}
-          />
-        ) : (
-          <View
-            style={[
-              styles.channelArtwork,
-              styles.artworkPlaceholder,
-              { backgroundColor: theme.colors.bluePastel },
-            ]}
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: "transparent" }]}
+      >
+        <View style={styles.fixedHeader}>
+          <TouchableOpacity
+            style={[styles.backButton, { backgroundColor: itemBackground }]}
+            onPress={() => navigation.goBack()}
+            accessibilityRole="button"
+            accessibilityLabel="Back to podcast search results"
           >
             <MaterialCommunityIcons
-              name="podcast"
-              size={44}
-              color={theme.colors.blueDark}
+              name="arrow-left"
+              size={22}
+              color={theme.colors.text}
             />
-          </View>
-        )}
-        <Text style={[styles.title, { color: theme.colors.text }]} numberOfLines={2}>
-          {channel?.collectionName || "Podcast episodes"}
-        </Text>
-        {channel?.artistName ? (
-          <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
-            {channel.artistName}
-          </Text>
-        ) : null}
-        <Text style={[styles.resultsHeading, { color: theme.colors.textSecondary }]}>
-          {isLoading
-            ? "Loading episodes..."
-            : `${episodes.length} ${episodes.length === 1 ? "episode" : "episodes"}`}
-        </Text>
-      </View>
-
-      <ScrollView
-        style={styles.episodesScroll}
-        contentContainerStyle={styles.listContent}
-      >
-        {isLoading ? (
-          <View style={styles.emptyState}>
-            <ActivityIndicator size="large" color={theme.colors.primary} />
-            <Text style={[styles.emptyTitle, { color: theme.colors.textSecondary }]}>
-              Loading episodes...
-            </Text>
-          </View>
-        ) : errorMessage ? (
-          <View style={styles.emptyState}>
-            <MaterialCommunityIcons
-              name="wifi-alert"
-              size={40}
-              color={theme.colors.orange}
+          </TouchableOpacity>
+          {channelArtwork ? (
+            <Image
+              source={{ uri: channelArtwork }}
+              style={styles.channelArtwork}
+              accessibilityLabel={`${channel?.collectionName || "Podcast"} cover art`}
             />
-            <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
-              Episodes unavailable
-            </Text>
-            <Text
+          ) : (
+            <View
               style={[
-                styles.emptyDescription,
-                { color: theme.colors.textSecondary },
+                styles.channelArtwork,
+                styles.artworkPlaceholder,
+                { backgroundColor: theme.colors.bluePastel },
               ]}
             >
-              {errorMessage}
+              <MaterialCommunityIcons
+                name="podcast"
+                size={44}
+                color={theme.colors.blueDark}
+              />
+            </View>
+          )}
+          <Text
+            style={[styles.title, { color: theme.colors.text }]}
+            numberOfLines={2}
+          >
+            {channel?.collectionName || "Podcast episodes"}
+          </Text>
+          {channel?.artistName ? (
+            <Text
+              style={[styles.subtitle, { color: theme.colors.textSecondary }]}
+            >
+              {channel.artistName}
             </Text>
-          </View>
-        ) : episodes.length === 0 ? (
-          <View style={styles.emptyState}>
-            <MaterialCommunityIcons
-              name="podcast"
-              size={44}
-              color={theme.colors.textSecondary}
-            />
-            <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
-              No episodes found
-            </Text>
-          </View>
-        ) : (
-          episodes.map((episode, index) => {
-            const artwork =
-              episode.artworkUrl600 ||
-              episode.artworkUrl160 ||
-              episode.artworkUrl100 ||
-              channelArtwork;
+          ) : null}
+          <Text
+            style={[
+              styles.resultsHeading,
+              { color: theme.colors.textSecondary },
+            ]}
+          >
+            {isLoading
+              ? "Loading episodes..."
+              : `${episodes.length} ${episodes.length === 1 ? "episode" : "episodes"}`}
+          </Text>
+        </View>
 
-            return (
-              <TouchableOpacity
-                key={String(episode.trackId ?? episode.episodeUrl ?? index)}
+        <ScrollView
+          style={styles.episodesScroll}
+          contentContainerStyle={styles.listContent}
+        >
+          {isLoading ? (
+            <View style={styles.emptyState}>
+              <ActivityIndicator size="large" color={theme.colors.primary} />
+              <Text
                 style={[
-                  styles.episodeCard,
-                  {
-                    backgroundColor: itemBackground,
-                    borderColor: theme.colors.border,
-                  },
+                  styles.emptyTitle,
+                  { color: theme.colors.textSecondary },
                 ]}
-                onPress={() =>
-                  navigation.navigate("PodcastPlayer", { channel, episode })
-                }
-                accessibilityRole="button"
-                accessibilityLabel={`Play ${episode.trackName || "podcast episode"}`}
               >
-                {artwork ? (
-                  <Image
-                    source={{ uri: artwork }}
-                    style={styles.episodeArtwork}
-                    accessibilityLabel={`${episode.trackName || "Episode"} cover art`}
-                  />
-                ) : (
-                  <View
+                Loading episodes...
+              </Text>
+            </View>
+          ) : errorMessage ? (
+            <View style={styles.emptyState}>
+              <MaterialCommunityIcons
+                name="wifi-alert"
+                size={40}
+                color={theme.colors.orange}
+              />
+              <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
+                Episodes unavailable
+              </Text>
+              <Text
+                style={[
+                  styles.emptyDescription,
+                  { color: theme.colors.textSecondary },
+                ]}
+              >
+                {errorMessage}
+              </Text>
+            </View>
+          ) : episodes.length === 0 ? (
+            <View style={styles.emptyState}>
+              <MaterialCommunityIcons
+                name="podcast"
+                size={44}
+                color={theme.colors.textSecondary}
+              />
+              <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>
+                No episodes found
+              </Text>
+            </View>
+          ) : (
+            episodes.map((episode, index) => {
+              const artwork =
+                episode.artworkUrl600 ||
+                episode.artworkUrl160 ||
+                episode.artworkUrl100 ||
+                channelArtwork;
+
+              return (
+                <View
+                  key={String(episode.trackId ?? episode.episodeUrl ?? index)}
+                  style={[
+                    styles.episodeCard,
+                    {
+                      backgroundColor: itemBackground,
+                      borderColor: theme.colors.border,
+                    },
+                  ]}
+                >
+                  <TouchableOpacity
+                    style={styles.episodeMain}
+                    onPress={() =>
+                      navigation.navigate("PodcastPlayer", { channel, episode })
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${episode.trackName || "podcast episode"}`}
+                  >
+                    {artwork ? (
+                      <Image
+                        source={{ uri: artwork }}
+                        style={styles.episodeArtwork}
+                        accessibilityLabel={`${episode.trackName || "Episode"} cover art`}
+                      />
+                    ) : (
+                      <View
+                        style={[
+                          styles.episodeArtwork,
+                          styles.artworkPlaceholder,
+                          { backgroundColor: theme.colors.bluePastel },
+                        ]}
+                      >
+                        <MaterialCommunityIcons
+                          name="podcast"
+                          size={26}
+                          color={theme.colors.blueDark}
+                        />
+                      </View>
+                    )}
+                    <View style={styles.episodeInfo}>
+                      <Text
+                        style={[
+                          styles.episodeTitle,
+                          { color: theme.colors.text },
+                        ]}
+                        numberOfLines={2}
+                      >
+                        {episode.trackName || "Untitled episode"}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.episodeMetadata,
+                          { color: theme.colors.textSecondary },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {[
+                          episode.releaseDate
+                            ? new Date(episode.releaseDate).toLocaleDateString()
+                            : null,
+                          episode.trackTimeMillis
+                            ? `${Math.round(episode.trackTimeMillis / 60000)} min`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join("· ") || "Podcast episode"}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity
                     style={[
-                      styles.episodeArtwork,
-                      styles.artworkPlaceholder,
-                      { backgroundColor: theme.colors.bluePastel },
+                      styles.playbackButton,
+                      !episode.episodeUrl && styles.playbackButtonDisabled,
                     ]}
+                    onPress={() => toggleEpisode(episode)}
+                    disabled={!episode.episodeUrl}
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: !episode.episodeUrl }}
+                    accessibilityLabel={
+                      episode.episodeUrl
+                        ? `${currentPodcast?.episode?.episodeUrl === episode.episodeUrl && status.playing ? "Pause" : "Play"} ${episode.trackName || "podcast episode"}`
+                        : `Audio unavailable for ${episode.trackName || "podcast episode"}`
+                    }
                   >
                     <MaterialCommunityIcons
-                      name="play-circle-outline"
-                      size={26}
-                      color={theme.colors.blueDark}
+                      name={
+                        currentPodcast?.episode?.episodeUrl ===
+                          episode.episodeUrl && status.playing
+                          ? "pause-circle"
+                          : "play-circle"
+                      }
+                      size={34}
+                      color={
+                        episode.episodeUrl
+                          ? theme.colors.primary
+                          : theme.colors.textSecondary
+                      }
                     />
-                  </View>
-                )}
-                <View style={styles.episodeInfo}>
-                  <Text
-                    style={[styles.episodeTitle, { color: theme.colors.text }]}
-                    numberOfLines={2}
-                  >
-                    {episode.trackName || "Untitled episode"}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.episodeMetadata,
-                      { color: theme.colors.textSecondary },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {[
-                      episode.releaseDate
-                        ? new Date(episode.releaseDate).toLocaleDateString()
-                        : null,
-                      episode.trackTimeMillis
-                        ? `${Math.round(episode.trackTimeMillis / 60000)} min`
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" Â· ") || "Podcast episode"}
-                  </Text>
+                  </TouchableOpacity>
                 </View>
-              </TouchableOpacity>
-            );
-          })
-        )}
-      </ScrollView>
-    </SafeAreaView>
+              );
+            })
+          )}
+        </ScrollView>
+      </SafeAreaView>
     </ImageBackground>
   );
 }
@@ -295,7 +389,21 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   episodeArtwork: { width: 58, height: 58, borderRadius: 10 },
+  episodeMain: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+  },
   episodeInfo: { flex: 1, marginLeft: 12 },
+  playbackButton: {
+    width: 42,
+    height: 48,
+    marginLeft: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  playbackButtonDisabled: { opacity: 0.5 },
   episodeTitle: { fontSize: 15, fontWeight: "800", lineHeight: 20 },
   episodeMetadata: { marginTop: 4, fontSize: 13 },
 });

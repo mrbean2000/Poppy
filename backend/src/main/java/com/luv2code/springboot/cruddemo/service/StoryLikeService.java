@@ -1,15 +1,10 @@
 package com.luv2code.springboot.cruddemo.service;
 
-import com.luv2code.springboot.cruddemo.dto.PassageDto;
 import com.luv2code.springboot.cruddemo.dto.StoryLikeDto;
-import com.luv2code.springboot.cruddemo.entity.StoryLike;
-
-import java.util.List;
+import com.luv2code.springboot.cruddemo.dto.StoryLikeResponse;
 
 public interface StoryLikeService {
-    StoryLike getByUserAndPassage(int userId, int passageId);
+    StoryLikeResponse getByUserAndPassage(int userId, long passageId, String language);
 
-//    StoryLike create(PassageDto thePassage);
-
-    StoryLike update(StoryLikeDto storyLikeDto);
+    StoryLikeResponse update(StoryLikeDto storyLikeDto, String language);
 }
