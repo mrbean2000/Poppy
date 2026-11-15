@@ -20,10 +20,13 @@ export default function HomeRecentPanel({
   navigation,
 }) {
   const { theme, isDarkMode } = useTheme();
-  const profileName = [profile?.firstName, profile?.lastName]
+  const firstName =
+    typeof profile?.firstName === "string" ? profile.firstName.trim() : "";
+  const lastName =
+    typeof profile?.lastName === "string" ? profile.lastName.trim() : "";
+  const profileName = [firstName, lastName]
     .filter(Boolean)
-    .join(" ")
-    .trim();
+    .join(" ");
   const displayName =
     profileName ||
     user?.displayName?.trim() ||

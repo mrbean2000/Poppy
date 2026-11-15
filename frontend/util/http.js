@@ -1,11 +1,11 @@
 import axios from "axios";
 import { File, Paths } from "expo-file-system";
 
-// const BACKEND_URL = "http://192.168.0.11:8080/api";
-// const NODE_BACKEND_URL = "http://192.168.0.11:3001";
+const BACKEND_URL = "http://192.168.0.8:8080/api";
+const NODE_BACKEND_URL = "http://192.168.0.8:3001";
 
-const BACKEND_URL = "http://192.168.115.60:8080/api";
-const NODE_BACKEND_URL = "http://192.168.115.60:3001";
+// const BACKEND_URL = "http://192.168.115.60:8080/api";
+// const NODE_BACKEND_URL = "http://192.168.115.60:3001";
 
 export async function requestRecentHistory(kind, userId, item) {
   try {
@@ -21,6 +21,8 @@ export async function requestRecentHistory(kind, userId, item) {
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
+      console.log("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+      console.error("Axios error:", error);
       const status = error.response?.status;
       throw new Error(
         status

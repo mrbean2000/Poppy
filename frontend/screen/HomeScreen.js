@@ -180,7 +180,6 @@ export default function HomeScreen({ navigation, route }) {
     try {
       setIsLoading(true);
       const userSettings = await getUserSettings(userId);
-      console.log(userSettings);
       setSettings(userSettings);
       setProfileLoadFailed(false);
       return userSettings;
@@ -290,7 +289,10 @@ export default function HomeScreen({ navigation, route }) {
         onClose={() => setPanelVisible(false)}
         navigation={navigation}
       />
-      <Animated.View style={[styles.container, { transform: [{ translateX: panelOffset }] }]}>
+      <Animated.View
+        pointerEvents={panelOpen ? "none" : "auto"}
+        style={[styles.container, { transform: [{ translateX: panelOffset }] }]}
+      >
     <ImageBackground
       source={
         isDarkMode
@@ -311,13 +313,6 @@ export default function HomeScreen({ navigation, route }) {
           {/* Header */}
 
           <View style={styles.header} onLayout={trackContainer("header")}>
-            <TouchableOpacity
-              onPress={() => setPanelVisible(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Open recent history"
-            >
-              <MaterialCommunityIcons name="menu" size={26} color={theme.colors.text} />
-            </TouchableOpacity>
             <WalkthroughStep name="profile">
               <WalkthroughTouchable
                 style={styles.avatar}
@@ -690,16 +685,16 @@ export default function HomeScreen({ navigation, route }) {
         </ScrollView>
       </SafeAreaView>
     </ImageBackground>
-        {panelOpen ? (
-          <TouchableOpacity
-            style={styles.panelBackdrop}
-            activeOpacity={1}
-            onPress={() => setPanelVisible(false)}
-            accessibilityRole="button"
-            accessibilityLabel="Close recent panel"
-          />
-        ) : null}
       </Animated.View>
+      {panelOpen ? (
+        <TouchableOpacity
+          style={[styles.panelBackdrop, { left: panelWidth }]}
+          activeOpacity={1}
+          onPress={() => setPanelVisible(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Close recent panel"
+        />
+      ) : null}
     </View>
   );
 }
@@ -715,6 +710,7 @@ const styles = StyleSheet.create({
   panelBackdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0, 0, 0, 0.3)",
+    zIndex: 1,
   },
 
   content: {
