@@ -8,7 +8,10 @@ export async function getRecentHistory(userId, kind) {
   if (items.some((item) =>
     !item ||
     typeof item.key !== "string" ||
-    (kind === "podcasts" && !item.episode?.episodeUrl) ||
+    (kind === "podcasts" &&
+      (item.type === "channel"
+        ? !item.channel?.collectionId
+        : !item.episode?.episodeUrl)) ||
     (kind === "articles" && (!item.id || !item.languageId || !item.language))
   )) {
     throw new Error("The saved recent history contains an invalid item.");
@@ -25,8 +28,10 @@ export async function recordRecentPodcast(userId, channel, episode) {
     throw new Error("Cannot save a podcast without an audio URL.");
   }
   return recordRecentItem(userId, "podcasts", {
+    type: "episode",
     key: episode.episodeUrl,
     channel: {
+      collectionId: channel?.collectionId || null,
       collectionName: channel?.collectionName || "",
       artistName: channel?.artistName || "",
       artworkUrl100: channel?.artworkUrl100 || "",
@@ -42,6 +47,25 @@ export async function recordRecentPodcast(userId, channel, episode) {
       artworkUrl160: episode.artworkUrl160 || "",
       artworkUrl600: episode.artworkUrl600 || "",
       trackTimeMillis: episode.trackTimeMillis || 0,
+    },
+  });
+}
+
+export async function recordRecentPodcastChannel(userId, channel) {
+  const collectionId = channel?.collectionId;
+  if (!collectionId) {
+    throw new Error("Cannot save a podcast channel without its iTunes ID.");
+  }
+  return recordRecentItem(userId, "podcasts", {
+    type: "channel",
+    key: `channel:${collectionId}`,
+    channel: {
+      collectionId,
+      collectionName: channel.collectionName || channel.trackName || "Podcast",
+      artistName: channel.artistName || "",
+      artworkUrl100: channel.artworkUrl100 || "",
+      artworkUrl600: channel.artworkUrl600 || "",
+      feedUrl: channel.feedUrl || "",
     },
   });
 }

@@ -18,6 +18,8 @@ export async function requestRecentHistory(kind, userId, item) {
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
+      console.log("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+      console.error("Axios error:", error);
       const status = error.response?.status;
       throw new Error(
         status

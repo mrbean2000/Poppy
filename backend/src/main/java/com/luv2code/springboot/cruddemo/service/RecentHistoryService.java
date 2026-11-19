@@ -56,11 +56,22 @@ public class RecentHistoryService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A valid history item key is required.");
         }
         if ("podcasts".equals(kind)) {
-            if (!(item.get("channel") instanceof Map<?, ?>)
-                    || !(item.get("episode") instanceof Map<?, ?> episode)
-                    || !(episode.get("episodeUrl") instanceof String audioUrl)
-                    || audioUrl.isBlank() || !key.equals(audioUrl)) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A valid podcast episode is required.");
+            if ("channel".equals(item.get("type"))) {
+                if (!(item.get("channel") instanceof Map<?, ?> channel)
+                        || !(channel.get("collectionId") instanceof Number collectionId)
+                        || collectionId.longValue() <= 0
+                        || collectionId.doubleValue() != collectionId.longValue()
+                        || !key.equals("channel:" + collectionId.longValue())) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A valid podcast channel is required.");
+                }
+            } else if ((item.get("type") == null || "episode".equals(item.get("type")))
+                    && item.get("channel") instanceof Map<?, ?>
+                    && item.get("episode") instanceof Map<?, ?> episode
+                    && episode.get("episodeUrl") instanceof String audioUrl
+                    && !audioUrl.isBlank() && key.equals(audioUrl)) {
+                // Existing episode history without a type remains valid.
+            } else {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A valid podcast episode or channel is required.");
             }
         } else {
             if (!(item.get("id") instanceof Number id) || id.longValue() <= 0
@@ -87,6 +98,17 @@ public class RecentHistoryService {
                 ON CONFLICT (user_id, kind, item_key_hash)
                 DO UPDATE SET item = EXCLUDED.item, viewed_at = EXCLUDED.viewed_at
                 """, userId, kind, sha256(key), encoded);
+        if ("podcasts".equals(kind)) {
+            jdbc.update("""
+                    DELETE FROM recent_history
+                    WHERE id IN (
+                        SELECT id FROM recent_history
+                        WHERE user_id = ? AND kind = ?
+                        ORDER BY viewed_at DESC, id DESC
+                        OFFSET 20
+                    )
+                    """, userId, kind);
+        }
     }
 
     private String sha256(String value) {

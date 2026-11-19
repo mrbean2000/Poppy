@@ -74,9 +74,10 @@ export default function RecentHistoryScreen({ navigation, route }) {
       getRecentHistory(user?.uid, kind)
         .then(async (items) => {
           const grouped = groupByDate(items, kind);
+          const episodeItems = items.filter((item) => item.type !== "channel");
           const progress = isArticle
             ? await getArticleProgress(user?.uid, items)
-            : await getSavedProgress(items.map((item) => item.episode.episodeUrl));
+            : await getSavedProgress(episodeItems.map((item) => item.episode.episodeUrl));
           if (active) {
             setSections(grouped);
             setSavedProgress(progress);
@@ -161,6 +162,7 @@ export default function RecentHistoryScreen({ navigation, route }) {
               </Text>
             )}
             renderItem={({ item }) => {
+              const isPodcastChannel = !isArticle && item.type === "channel";
               const artwork = isArticle ? item.imageUrl : (
                 item.episode?.artworkUrl600 ||
                 item.episode?.artworkUrl160 ||
@@ -170,10 +172,12 @@ export default function RecentHistoryScreen({ navigation, route }) {
               );
               const progress = isArticle
                 ? savedProgress[item.key]
-                : currentProgress?.episodeUrl === item.episode.episodeUrl
-                  ? currentProgress
-                  : savedProgress[item.episode.episodeUrl];
-              const hasProgress = progress !== undefined && progress !== null;
+                : isPodcastChannel
+                  ? null
+                  : currentProgress?.episodeUrl === item.episode.episodeUrl
+                    ? currentProgress
+                    : savedProgress[item.episode.episodeUrl];
+              const hasProgress = !isPodcastChannel && progress !== undefined && progress !== null;
               const progressRatio = !hasProgress
                 ? 0
                 : isArticle
@@ -193,6 +197,10 @@ export default function RecentHistoryScreen({ navigation, route }) {
                         imageUrl: item.imageUrl,
                         readingLanguage: item.language,
                         readingLanguageId: item.languageId,
+                      });
+                    } else if (isPodcastChannel) {
+                      navigation.navigate("PodcastEpisodes", {
+                        channel: item.channel,
                       });
                     } else {
                       navigation.navigate("PodcastPlayer", {
@@ -222,40 +230,46 @@ export default function RecentHistoryScreen({ navigation, route }) {
                     >
                       {isArticle
                         ? item.title
-                        : item.episode?.trackName || "Podcast episode"}
+                        : isPodcastChannel
+                          ? item.channel?.collectionName || "Podcast channel"
+                          : item.episode?.trackName || "Podcast episode"}
                     </Text>
                     {!isArticle && (
                       <Text
                         numberOfLines={1}
                         style={{ color: theme.colors.textSecondary }}
                       >
-                        {item.episode?.artistName ||
-                          item.channel?.artistName ||
-                          "Podcast"}
+                        {isPodcastChannel
+                          ? item.channel?.artistName || "Podcast channel"
+                          : item.episode?.artistName ||
+                            item.channel?.artistName ||
+                            "Podcast"}
                       </Text>
                     )}
-                    <View style={styles.progressRow}>
-                      <View
-                        style={[styles.progressTrack, { backgroundColor: theme.colors.border }]}
-                        accessibilityRole="progressbar"
-                        accessibilityLabel={isArticle ? "Reading progress" : "Podcast progress"}
-                        accessibilityValue={hasProgress ? { min: 0, max: 100, now: Math.round(progressRatio * 100) } : { text: "Progress unavailable" }}
-                      >
+                    {!isPodcastChannel && (
+                      <View style={styles.progressRow}>
                         <View
-                          style={[
-                            styles.progressFill,
-                            { width: `${progressRatio * 100}%`, backgroundColor: theme.colors.primary },
-                          ]}
-                        />
+                          style={[styles.progressTrack, { backgroundColor: theme.colors.border }]}
+                          accessibilityRole="progressbar"
+                          accessibilityLabel={isArticle ? "Reading progress" : "Podcast progress"}
+                          accessibilityValue={hasProgress ? { min: 0, max: 100, now: Math.round(progressRatio * 100) } : { text: "Progress unavailable" }}
+                        >
+                          <View
+                            style={[
+                              styles.progressFill,
+                              { width: `${progressRatio * 100}%`, backgroundColor: theme.colors.primary },
+                            ]}
+                          />
+                        </View>
+                        <Text style={[styles.remaining, { color: theme.colors.textSecondary }]}>
+                          {!hasProgress
+                            ? "Progress unavailable"
+                            : isArticle
+                              ? `${Math.round(progressRatio * 100)}%`
+                              : `${minutesLeft} ${minutesLeft === 1 ? "min" : "mins"} left`}
+                        </Text>
                       </View>
-                      <Text style={[styles.remaining, { color: theme.colors.textSecondary }]}>
-                        {!hasProgress
-                          ? "Progress unavailable"
-                          : isArticle
-                            ? `${Math.round(progressRatio * 100)}%`
-                            : `${minutesLeft} ${minutesLeft === 1 ? "min" : "mins"} left`}
-                      </Text>
-                    </View>
+                    )}
                   </View>
                 </TouchableOpacity>
               );

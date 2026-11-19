@@ -73,12 +73,10 @@ export default function PodcastEpisodesScreen({ navigation, route }) {
       loadEpisode(channel, episode);
       if (isCurrent && status.didJustFinish) await player.seekTo(0);
       player.play();
-      if (!isCurrent) {
-        recordRecentPodcast(user?.uid, channel, episode).catch((error) => {
-          console.warn("Unable to save recent podcast:", error);
-          Alert.alert("Recent podcasts", error.message);
-        });
-      }
+      recordRecentPodcast(user?.uid, channel, episode).catch((error) => {
+        console.warn("Unable to save recent podcast:", error);
+        Alert.alert("Recent podcasts", error.message);
+      });
     } catch (error) {
       Alert.alert(
         "Playback unavailable",

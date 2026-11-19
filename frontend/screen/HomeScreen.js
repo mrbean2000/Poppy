@@ -227,11 +227,8 @@ export default function HomeScreen({ navigation, route }) {
   async function fetchUserSettings(userId) {
     try {
       setIsLoading(true);
-      console.log("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
-      console.log(userId);
-      const userSettings = await getUserSettings(userId);
-      console.log("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
 
+      const userSettings = await getUserSettings(userId);
       console.log(userSettings);
       setSettings(userSettings);
       setProfileLoadFailed(false);
@@ -782,16 +779,16 @@ export default function HomeScreen({ navigation, route }) {
             </ScrollView>
           </SafeAreaView>
         </ImageBackground>
-        {panelOpen ? (
-          <TouchableOpacity
-            style={styles.panelBackdrop}
-            activeOpacity={1}
-            onPress={() => setPanelVisible(false)}
-            accessibilityRole="button"
-            accessibilityLabel="Close recent panel"
-          />
-        ) : null}
       </Animated.View>
+      {panelOpen ? (
+        <TouchableOpacity
+          style={[styles.panelBackdrop, { left: panelWidth }]}
+          activeOpacity={1}
+          onPress={() => setPanelVisible(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Close recent panel"
+        />
+      ) : null}
     </View>
   );
 }
@@ -807,6 +804,7 @@ const styles = StyleSheet.create({
   panelBackdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0, 0, 0, 0.3)",
+    zIndex: 1,
   },
 
   content: {
