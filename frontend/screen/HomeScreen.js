@@ -747,6 +747,33 @@ export default function HomeScreen({ navigation, route }) {
                     </View>
                   </WalkthroughTouchable>
                 </WalkthroughStep>
+                <WalkthroughStep name="podcast">
+                  <WalkthroughTouchable
+                    onLayout={track("podcast", "grid")}
+                    style={[
+                      styles.quickCard,
+                      styles.quickCardCentered,
+                      { backgroundColor: "#FDA96C" },
+                    ]}
+                    onPress={() => navigation.navigate("GameSelection")}
+                    accessibilityRole="button"
+                    accessibilityLabel="Open game list"
+                  >
+                    <View style={styles.quickTitleRow}>
+                      <Text style={styles.quickTitleEmoji}>🎙️</Text>
+                      <View style={styles.quickTextBlock}>
+                        <Text style={[styles.quickTitle, { color: "#000000" }]}>
+                          Games (Beta)
+                        </Text>
+                        <Text
+                          style={[styles.quickSubtitle, { color: "#000000" }]}
+                        >
+                          Play and learn
+                        </Text>
+                      </View>
+                    </View>
+                  </WalkthroughTouchable>
+                </WalkthroughStep>
               </View>
 
               <View
