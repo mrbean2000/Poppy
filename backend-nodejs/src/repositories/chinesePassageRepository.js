@@ -6,7 +6,7 @@ const linkUser = async (db, passageId, userId) => {
   if (userId === null || userId === undefined) return;
 
   await db.query(
-    `INSERT INTO user_chinese_passage (user_id, passage_id)
+    `INSERT INTO user_passage (user_id, passage_id)
      VALUES ($1, $2)
      ON CONFLICT DO NOTHING`,
     [userId, passageId],

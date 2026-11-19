@@ -1,4 +1,4 @@
-﻿import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -19,7 +19,10 @@ import { getPodcastEpisodes, searchPodcasts } from "../util/http";
 import { usePodcastPlayback } from "../components/PodcastPlaybackContext";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../theme/ThemeContext";
-import { recordRecentPodcast } from "../util/recentHistory";
+import {
+  recordRecentPodcast,
+  recordRecentPodcastChannel,
+} from "../util/recentHistory";
 
 export default function PodcastScreen({ navigation }) {
   const { theme, isDarkMode } = useTheme();
@@ -36,6 +39,7 @@ export default function PodcastScreen({ navigation }) {
   const [isSearching, setIsSearching] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
   const searchRequestRef = useRef(0);
+  const searchTimeoutRef = useRef(null);
   const episodeRequestRef = useRef(0);
   const resultsScrollRef = useRef(null);
   const playbackRequestRef = useRef(false);
@@ -54,12 +58,10 @@ export default function PodcastScreen({ navigation }) {
       loadEpisode(channel, episode);
       if (isCurrent && status.didJustFinish) await player.seekTo(0);
       player.play();
-      if (!isCurrent) {
-        recordRecentPodcast(user?.uid, channel, episode).catch((error) => {
-          console.warn("Unable to save recent podcast:", error);
-          Alert.alert("Recent podcasts", error.message);
-        });
-      }
+      recordRecentPodcast(user?.uid, channel, episode).catch((error) => {
+        console.warn("Unable to save recent podcast:", error);
+        Alert.alert("Recent podcasts", error.message);
+      });
     } catch (error) {
       Alert.alert(
         "Playback unavailable",
@@ -99,12 +101,7 @@ export default function PodcastScreen({ navigation }) {
     );
   }
 
-  async function handleSearch() {
-    Keyboard.dismiss();
-    const term = searchQuery.trim();
-    const requestId = searchRequestRef.current + 1;
-    searchRequestRef.current = requestId;
-
+  async function searchForTerm(term, requestId) {
     if (!term) {
       setSearchResults([]);
       setErrorMessage(null);
@@ -132,6 +129,35 @@ export default function PodcastScreen({ navigation }) {
     }
   }
 
+  function handleSearch() {
+    Keyboard.dismiss();
+    clearTimeout(searchTimeoutRef.current);
+    const requestId = searchRequestRef.current + 1;
+    searchRequestRef.current = requestId;
+    searchForTerm(searchQuery.trim(), requestId);
+  }
+
+  useEffect(() => {
+    const term = searchQuery.trim();
+    const requestId = searchRequestRef.current + 1;
+    searchRequestRef.current = requestId;
+
+    if (!term) {
+      setSearchResults([]);
+      setErrorMessage(null);
+      setIsSearching(false);
+      return undefined;
+    }
+
+    setErrorMessage(null);
+    setIsSearching(false);
+    searchTimeoutRef.current = setTimeout(() => {
+      searchForTerm(term, requestId);
+    }, 350);
+
+    return () => clearTimeout(searchTimeoutRef.current);
+  }, [searchQuery, searchType]);
+
   function handleSearchTypeChange(nextSearchType) {
     if (nextSearchType === searchType) return;
 
@@ -153,6 +179,10 @@ export default function PodcastScreen({ navigation }) {
       return;
     }
 
+    recordRecentPodcastChannel(user?.uid, channel).catch((error) => {
+      console.warn("Unable to save recent podcast channel:", error);
+      Alert.alert("Recent podcasts", error.message);
+    });
     navigation.navigate("PodcastEpisodes", { channel });
   }
 

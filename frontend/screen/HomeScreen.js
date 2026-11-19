@@ -23,8 +23,16 @@ import {
   getUserVocabulary,
   getUserSettings,
   recordLoginStreak,
+  vocabularyLanguage,
 } from "../util/http";
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useFocusEffect, useIsFocused } from "@react-navigation/native";
 import { useAuth } from "../context/AuthContext";
 import { useOnboardingSelections } from "../context/OnboardingSelectionContext";
@@ -32,7 +40,12 @@ import { useTheme } from "../theme/ThemeContext";
 import HomeRecentPanel from "../components/HomeRecentPanel";
 import { HomePanelContext } from "../context/HomePanelContext";
 import { getProfilePictureSource } from "../util/profilePictures";
-import { useHomeWalkthrough, useWalkthroughScreen, WalkthroughStep, WalkthroughTouchable } from "../context/HomeWalkthroughContext";
+import {
+  useHomeWalkthrough,
+  useWalkthroughScreen,
+  WalkthroughStep,
+  WalkthroughTouchable,
+} from "../context/HomeWalkthroughContext";
 
 const fallbackPassageImages = [
   require("../assets/images/masot/poppy_superman.png"),
@@ -74,7 +87,12 @@ export default function HomeScreen({ navigation, route }) {
   const scrollRef = useRef(null);
   const autoWalkthroughAttempted = useRef(false);
   const focused = useIsFocused();
-  const { begin, interruptions, foreground, active: walkthroughActive } = useHomeWalkthrough();
+  const {
+    begin,
+    interruptions,
+    foreground,
+    active: walkthroughActive,
+  } = useHomeWalkthrough();
   const { track, trackContainer } = useWalkthroughScreen("Home", scrollRef);
   const { width } = useWindowDimensions();
   const panelWidth = width * 0.8;
@@ -83,39 +101,53 @@ export default function HomeScreen({ navigation, route }) {
   const [panelOpen, setPanelOpen] = useState(false);
   const panelOpenRef = useRef(false);
 
-  const setPanelVisible = useCallback((visible) => {
-    panelOpenRef.current = visible;
-    setPanelOpen(visible);
-    setGlobalPanelOpen(visible);
-    Animated.timing(panelOffset, {
-      toValue: visible ? panelWidth : 0,
-      duration: 220,
-      useNativeDriver: true,
-    }).start();
-  }, [panelOffset, panelWidth, setGlobalPanelOpen]);
+  const setPanelVisible = useCallback(
+    (visible) => {
+      panelOpenRef.current = visible;
+      setPanelOpen(visible);
+      setGlobalPanelOpen(visible);
+      Animated.timing(panelOffset, {
+        toValue: visible ? panelWidth : 0,
+        duration: 220,
+        useNativeDriver: true,
+      }).start();
+    },
+    [panelOffset, panelWidth, setGlobalPanelOpen],
+  );
 
-  const panelResponder = useMemo(() => PanResponder.create({
-    onMoveShouldSetPanResponderCapture: (_, gesture) =>
-      focused &&
-      !walkthroughActive &&
-      gesture.numberActiveTouches === 1 &&
-      Math.abs(gesture.dx) > 15 &&
-      Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5 &&
-      (panelOpenRef.current ? gesture.dx < 0 : gesture.dx > 0),
-    onPanResponderGrant: () => panelOffset.stopAnimation(),
-    onPanResponderMove: (_, gesture) => {
-      const start = panelOpenRef.current ? panelWidth : 0;
-      panelOffset.setValue(Math.max(0, Math.min(panelWidth, start + gesture.dx)));
-    },
-    onPanResponderRelease: (_, gesture) => {
-      const start = panelOpenRef.current ? panelWidth : 0;
-      const position = Math.max(0, Math.min(panelWidth, start + gesture.dx));
-      setPanelVisible(
-        Math.abs(gesture.vx) > 0.5 ? gesture.vx > 0 : position > panelWidth / 2,
-      );
-    },
-    onPanResponderTerminate: () => setPanelVisible(panelOpenRef.current),
-  }), [focused, walkthroughActive, panelOffset, panelWidth, setPanelVisible]);
+  const panelResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponderCapture: (_, gesture) =>
+          focused &&
+          !walkthroughActive &&
+          gesture.numberActiveTouches === 1 &&
+          Math.abs(gesture.dx) > 15 &&
+          Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5 &&
+          (panelOpenRef.current ? gesture.dx < 0 : gesture.dx > 0),
+        onPanResponderGrant: () => panelOffset.stopAnimation(),
+        onPanResponderMove: (_, gesture) => {
+          const start = panelOpenRef.current ? panelWidth : 0;
+          panelOffset.setValue(
+            Math.max(0, Math.min(panelWidth, start + gesture.dx)),
+          );
+        },
+        onPanResponderRelease: (_, gesture) => {
+          const start = panelOpenRef.current ? panelWidth : 0;
+          const position = Math.max(
+            0,
+            Math.min(panelWidth, start + gesture.dx),
+          );
+          setPanelVisible(
+            Math.abs(gesture.vx) > 0.5
+              ? gesture.vx > 0
+              : position > panelWidth / 2,
+          );
+        },
+        onPanResponderTerminate: () => setPanelVisible(panelOpenRef.current),
+      }),
+    [focused, walkthroughActive, panelOffset, panelWidth, setPanelVisible],
+  );
 
   useEffect(() => {
     if (!focused || walkthroughActive) setPanelVisible(false);
@@ -129,10 +161,13 @@ export default function HomeScreen({ navigation, route }) {
 
   useEffect(() => {
     if (!focused || !panelOpen) return undefined;
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      setPanelVisible(false);
-      return true;
-    });
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => {
+        setPanelVisible(false);
+        return true;
+      },
+    );
     return () => subscription.remove();
   }, [focused, panelOpen, setPanelVisible]);
 
@@ -144,7 +179,9 @@ export default function HomeScreen({ navigation, route }) {
     if (!focused || !foreground || !settings?.user_id) return;
     if (route.params?.replayWalkthrough) {
       if (typeof settings.homeWalkthroughCompleted !== "boolean") {
-        setErrorMessage("Walkthrough settings are unavailable. Update the backend and try again.");
+        setErrorMessage(
+          "Walkthrough settings are unavailable. Update the backend and try again.",
+        );
         navigation.setParams({ replayWalkthrough: false });
         return;
       }
@@ -152,10 +189,21 @@ export default function HomeScreen({ navigation, route }) {
         autoWalkthroughAttempted.current = true;
         navigation.setParams({ replayWalkthrough: false });
       }
-    } else if (settings.homeWalkthroughCompleted === false && !autoWalkthroughAttempted.current) {
+    } else if (
+      settings.homeWalkthroughCompleted === false &&
+      !autoWalkthroughAttempted.current
+    ) {
       autoWalkthroughAttempted.current = begin(settings.user_id, false);
     }
-  }, [begin, focused, foreground, interruptions, navigation, route.params?.replayWalkthrough, settings]);
+  }, [
+    begin,
+    focused,
+    foreground,
+    interruptions,
+    navigation,
+    route.params?.replayWalkthrough,
+    settings,
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -179,6 +227,7 @@ export default function HomeScreen({ navigation, route }) {
   async function fetchUserSettings(userId) {
     try {
       setIsLoading(true);
+
       const userSettings = await getUserSettings(userId);
       console.log(userSettings);
       setSettings(userSettings);
@@ -207,9 +256,13 @@ export default function HomeScreen({ navigation, route }) {
     }
   }
 
-  async function fetchSettingsAndLastReadPassage(userId) {
+  async function fetchSettingsAndHomeData(userId) {
     const userSettings = await fetchUserSettings(userId);
-    await fetchLastReadPassage(userId, userSettings?.targetlanguageid);
+    if (!userSettings) return;
+    await Promise.all([
+      fetchLastReadPassage(userId, userSettings.targetlanguageid),
+      fetchVocabularyCount(userId, userSettings),
+    ]);
   }
 
   async function fetchCompletedToday(userId) {
@@ -229,9 +282,12 @@ export default function HomeScreen({ navigation, route }) {
     }
   }
 
-  async function fetchVocabularyCount(userId) {
+  async function fetchVocabularyCount(userId, userSettings) {
     try {
-      const vocabulary = await getUserVocabulary(userId);
+      const vocabulary = await getUserVocabulary(
+        userId,
+        vocabularyLanguage(userSettings),
+      );
       setVocabularyCount(Array.isArray(vocabulary) ? vocabulary.length : 0);
     } catch (error) {
       setErrorMessage(error.message);
@@ -244,16 +300,21 @@ export default function HomeScreen({ navigation, route }) {
 
     async function loadUserData() {
       try {
+        console.log("******************************");
         const profile = await getUserProfileByFirebaseUid(user.uid);
+        console.log("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
+        console.log(profile);
+
         if (!active) return;
         if (!profile?.id) {
           throw new Error("Your profile does not have a database user ID.");
         }
+        console.log("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
+        console.log(profile);
         setProfile({ uid: user.uid, data: profile });
         profileIdRef.current = profile.id;
-        fetchSettingsAndLastReadPassage(profile.id);
+        fetchSettingsAndHomeData(profile.id);
         fetchCompletedToday(profile.id);
-        fetchVocabularyCount(profile.id);
         fetchLoginStreak(user.uid);
       } catch (error) {
         if (!active) return;
@@ -272,9 +333,8 @@ export default function HomeScreen({ navigation, route }) {
   useFocusEffect(
     useCallback(() => {
       if (profileIdRef.current) {
-        fetchSettingsAndLastReadPassage(profileIdRef.current);
+        fetchSettingsAndHomeData(profileIdRef.current);
         fetchCompletedToday(profileIdRef.current);
-        fetchVocabularyCount(profileIdRef.current);
       }
     }, []),
   );
@@ -290,442 +350,445 @@ export default function HomeScreen({ navigation, route }) {
         onClose={() => setPanelVisible(false)}
         navigation={navigation}
       />
-      <Animated.View style={[styles.container, { transform: [{ translateX: panelOffset }] }]}>
-    <ImageBackground
-      source={
-        isDarkMode
-          ? require("../assets/images/masot/backgroundimagequestion_darkmode.png")
-          : require("../assets/images/masot/backgroundimagequestion.png")
-      }
-      style={styles.backgroundImage}
-      resizeMode="cover"
-    >
-      <SafeAreaView
-        style={[styles.container, { backgroundColor: "transparent" }]}
+      <Animated.View
+        style={[styles.container, { transform: [{ translateX: panelOffset }] }]}
       >
-        <ScrollView
-          ref={scrollRef}
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
+        <ImageBackground
+          source={
+            isDarkMode
+              ? require("../assets/images/masot/backgroundimagequestion_darkmode.png")
+              : require("../assets/images/masot/backgroundimagequestion.png")
+          }
+          style={styles.backgroundImage}
+          resizeMode="cover"
         >
-          {/* Header */}
-
-          <View style={styles.header} onLayout={trackContainer("header")}>
-            <TouchableOpacity
-              onPress={() => setPanelVisible(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Open recent history"
-            >
-              <MaterialCommunityIcons name="menu" size={26} color={theme.colors.text} />
-            </TouchableOpacity>
-            <WalkthroughStep name="profile">
-              <WalkthroughTouchable
-                style={styles.avatar}
-                onLayout={track("profile", "header")}
-                onPress={() => navigation.navigate("ProfilePicture")}
-                accessibilityRole="button"
-                accessibilityLabel="Change profile picture"
-              >
-                <Image
-                  source={getProfilePictureSource(settings?.profilePictureUrl)}
-                  style={styles.profileImage}
-                />
-              </WalkthroughTouchable>
-            </WalkthroughStep>
-            <View style={styles.greetingBlock}>
-              <Text style={[styles.greeting, { color: theme.colors.text }]}>
-                Welcome back
-              </Text>
-              <Text style={[styles.name, { color: theme.colors.text }]}>
-                Ready to learn?
-              </Text>
-            </View>
-          </View>
-
-          {errorMessage ? (
-            <Text style={[styles.errorMessage, { color: theme.colors.danger }]}>
-              {errorMessage}
-            </Text>
-          ) : null}
-          {profileLoadFailed ? (
-            <TouchableOpacity
-              onPress={() => {
-                setErrorMessage(null);
-                setProfileLoadFailed(false);
-                setProfileLoadAttempt((attempt) => attempt + 1);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Retry loading profile and settings"
-            >
-              <Text style={{ color: theme.colors.text, marginBottom: 12, fontWeight: "700" }}>
-                Retry loading profile and settings
-              </Text>
-            </TouchableOpacity>
-          ) : null}
-
-          {/* Daily Goal */}
-
-          <View
-            style={[
-              styles.goalCard,
-              {
-                backgroundColor: isDarkMode ? "#f0e6d8" : "#FFF4E6",
-              },
-            ]}
+          <SafeAreaView
+            style={[styles.container, { backgroundColor: "transparent" }]}
           >
-            <View style={styles.goalHeader}>
-              <View style={styles.goalSummary}>
-                <Image
-                  source={require("../assets/icons/target-icon.png")}
-                  style={styles.goalIcon}
-                  resizeMode="contain"
-                  accessibilityLabel="Daily goal target"
-                />
-                <View>
-                  <Text style={[styles.goalTitle, { color: "#000000" }]}>
-                    Daily Goal
-                  </Text>
+            <ScrollView
+              ref={scrollRef}
+              contentContainerStyle={styles.content}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Header */}
 
-                  <Text style={[styles.goalProgress, { color: "#000000" }]}>
-                    {completedToday} / {dailyGoal} passages
+              <View style={styles.header} onLayout={trackContainer("header")}>
+                <TouchableOpacity
+                  onPress={() => setPanelVisible(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open recent history"
+                >
+                  <MaterialCommunityIcons
+                    name="menu"
+                    size={26}
+                    color={theme.colors.text}
+                  />
+                </TouchableOpacity>
+                <WalkthroughStep name="profile">
+                  <WalkthroughTouchable
+                    style={styles.avatar}
+                    onLayout={track("profile", "header")}
+                    onPress={() => navigation.navigate("ProfilePicture")}
+                    accessibilityRole="button"
+                    accessibilityLabel="Change profile picture"
+                  >
+                    <Image
+                      source={getProfilePictureSource(
+                        settings?.profilePictureUrl,
+                      )}
+                      style={styles.profileImage}
+                    />
+                  </WalkthroughTouchable>
+                </WalkthroughStep>
+                <View style={styles.greetingBlock}>
+                  <Text style={[styles.greeting, { color: theme.colors.text }]}>
+                    Welcome back
+                  </Text>
+                  <Text style={[styles.name, { color: theme.colors.text }]}>
+                    Ready to learn?
                   </Text>
                 </View>
               </View>
 
-              <View style={styles.streakHeader}>
-                <Text style={styles.fire}>🔥</Text>
-                <Text style={[styles.streak, { color: "#000000" }]}>
-                  {loginStreak} day streak
+              {errorMessage ? (
+                <Text
+                  style={[styles.errorMessage, { color: theme.colors.danger }]}
+                >
+                  {errorMessage}
                 </Text>
-              </View>
-            </View>
+              ) : null}
+              {profileLoadFailed ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    setErrorMessage(null);
+                    setProfileLoadFailed(false);
+                    setProfileLoadAttempt((attempt) => attempt + 1);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Retry loading profile and settings"
+                >
+                  <Text
+                    style={{
+                      color: theme.colors.text,
+                      marginBottom: 12,
+                      fontWeight: "700",
+                    }}
+                  >
+                    Retry loading profile and settings
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
 
-            <View style={styles.progressBackground}>
+              {/* Daily Goal */}
+
               <View
                 style={[
-                  styles.progressFill,
+                  styles.goalCard,
                   {
-                    backgroundColor: theme.colors.primary,
-                    width: `${goalPercent}%`,
+                    backgroundColor: isDarkMode ? "#f0e6d8" : "#FFF4E6",
                   },
                 ]}
-              />
-            </View>
-
-            <View style={styles.streakRow}>
-              <Text
-                style={[
-                  styles.progressPercent,
-                  { color: theme.colors.primary },
-                ]}
               >
-                {goalPercent}%
-              </Text>
-            </View>
-          </View>
+                <View style={styles.goalHeader}>
+                  <View style={styles.goalSummary}>
+                    <Image
+                      source={require("../assets/icons/target-icon.png")}
+                      style={styles.goalIcon}
+                      resizeMode="contain"
+                      accessibilityLabel="Daily goal target"
+                    />
+                    <View>
+                      <Text style={[styles.goalTitle, { color: "#000000" }]}>
+                        Daily Goal
+                      </Text>
 
-          {/* Language selector */}
+                      <Text style={[styles.goalProgress, { color: "#000000" }]}>
+                        {completedToday} / {dailyGoal} passages
+                      </Text>
+                    </View>
+                  </View>
 
-          <WalkthroughStep name="language">
-          <WalkthroughTouchable
-            onLayout={track("language")}
-            style={[
-              styles.languageSelector,
-              {
-                backgroundColor: isDarkMode ? "#f0e6d8" : "#FFF4E6",
-              },
-            ]}
-            onPress={() =>
-              navigation.navigate("Settings", {
-                userSettings: settings,
-                setSettings: setSettings,
-              })
-            }
-          >
-            <Text style={styles.flag}>{settings?.nativeLanguageFlag}</Text>
+                  <View style={styles.streakHeader}>
+                    <Text style={styles.fire}>🔥</Text>
+                    <Text style={[styles.streak, { color: "#000000" }]}>
+                      {loginStreak} day streak
+                    </Text>
+                  </View>
+                </View>
 
-            <Text style={[styles.language, { color: "#000000" }]}>
-              {settings?.nativelanguage}
-            </Text>
+                <View style={styles.progressBackground}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      {
+                        backgroundColor: theme.colors.primary,
+                        width: `${goalPercent}%`,
+                      },
+                    ]}
+                  />
+                </View>
 
-            <Text style={[styles.arrow, { color: "#000000" }]}>→</Text>
-
-            <Text style={styles.flag}>{settings?.targetLanguageFlag}</Text>
-
-            <Text style={[styles.language, { color: "#000000" }]}>
-              {settings?.targetlanguage}
-            </Text>
-
-            <Text
-              style={[
-                styles.chevron,
-                { color: isDarkMode ? "#FFF4E6" : "#000000" },
-              ]}
-            >
-              ›
-            </Text>
-          </WalkthroughTouchable>
-          </WalkthroughStep>
-
-          {/* Continue Reading */}
-
-          <View style={styles.sectionHeader} onLayout={trackContainer("storiesHeader")}>
-            <View style={styles.sectionTitleGroup}>
-              <Image
-                source={require("../assets/icons/book-icon.png")}
-                style={styles.quickIconImage}
-                resizeMode="contain"
-                accessibilityLabel="Book"
-              />
-              <Text
-                style={[
-                  styles.sectionTitle,
-                  { color: isDarkMode ? "#FFFCF5" : "#172033" },
-                ]}
-              >
-                Continue Reading
-              </Text>
-            </View>
-
-            <WalkthroughStep name="stories">
-            <WalkthroughTouchable onLayout={track("stories", "storiesHeader")} onPress={() => navigation.navigate("Stories")}>
-              <Text style={styles.seeAll}>See all ›</Text>
-            </WalkthroughTouchable>
-            </WalkthroughStep>
-          </View>
-
-          <TouchableOpacity
-            style={[
-              styles.articleCard,
-              { backgroundColor: isDarkMode ? "#f0e6d8" : "#FFF4E6" },
-            ]}
-            onPress={() => {
-              if (!lastReadPassage) {
-                navigation.navigate("Import");
-                return;
-              }
-
-              navigation.navigate("Reader", {
-                id: lastReadPassage.id,
-                title: lastReadPassage.title,
-                imageUrl: lastReadPassage.imageUrl,
-              });
-            }}
-          >
-            <View style={styles.image}>
-              <Image
-                source={
-                  lastReadPassage?.imageUrl
-                    ? { uri: lastReadPassage.imageUrl }
-                    : fallbackPassageImage
-                }
-                style={
-                  lastReadPassage?.imageUrl
-                    ? styles.storyImage
-                    : styles.avatarImage
-                }
-              />
-            </View>
-
-            <View style={styles.articleInfo}>
-              <Text style={[styles.articleTitle, { color: "#000000" }]}>
-                {lastReadPassage?.title ?? "No story in progress"}
-              </Text>
-
-              <Text style={[styles.articleMeta, { color: "#4B5563" }]}>
-                {lastReadPassage
-                  ? "Continue where you left off"
-                  : "Start reading a story"}
-              </Text>
-            </View>
-
-            <View style={styles.playButton}>
-              <MaterialCommunityIcons
-                name={lastReadPassage ? "arrow-right" : "plus"}
-                size={27}
-                color="#FFFFFF"
-              />
-            </View>
-          </TouchableOpacity>
-
-          {/* Quick Actions */}
-
-          <View style={styles.grid} onLayout={trackContainer("grid")}>
-            <WalkthroughStep name="vocabulary">
-            <WalkthroughTouchable
-              onLayout={track("vocabulary", "grid")}
-              style={[styles.quickCard, { backgroundColor: "#FAC048" }]}
-              onPress={() => navigation.navigate("Vocabulary")}
-            >
-              <Image
-                source={require("../assets/icons/book-icon.png")}
-                style={styles.quickIconImage}
-                resizeMode="contain"
-                accessibilityLabel="Book"
-              />
-
-              <Text style={[styles.quickTitle, { color: "#000000" }]}>
-                My Vocabulary
-              </Text>
-
-              <Text style={[styles.quickSubtitle, { color: "#000000" }]}>
-                {vocabularyCount} {vocabularyCount === 1 ? "word" : "words"}
-              </Text>
-            </WalkthroughTouchable>
-            </WalkthroughStep>
-
-            <WalkthroughStep name="flashcards">
-            <WalkthroughTouchable
-              onLayout={track("flashcards", "grid")}
-              style={[
-                styles.quickCard,
-                styles.quickCardCentered,
-                { backgroundColor: "#DDB8F3" },
-              ]}
-              onPress={() => navigation.navigate("Flashcards")}
-            >
-              <View style={styles.quickTitleRow}>
-                <Image
-                  source={require("../assets/icons/flashcard-icon.png")}
-                  style={styles.quickIconImage}
-                  resizeMode="contain"
-                  accessibilityLabel="Flashcards"
-                />
-                <View style={styles.quickTextBlock}>
+                <View style={styles.streakRow}>
                   <Text
                     style={[
-                      styles.quickTitle,
-                      styles.flashcardsTitle,
-                      { color: "#000000" },
+                      styles.progressPercent,
+                      { color: theme.colors.primary },
                     ]}
                   >
-                    Flashcards
+                    {goalPercent}%
                   </Text>
-                  {/* <Text style={[styles.quickSubtitle, { color: "#231e1e" }]}>
+                </View>
+              </View>
+
+              {/* Language selector */}
+
+              <WalkthroughStep name="language">
+                <WalkthroughTouchable
+                  onLayout={track("language")}
+                  style={[
+                    styles.languageSelector,
+                    {
+                      backgroundColor: isDarkMode ? "#f0e6d8" : "#FFF4E6",
+                    },
+                  ]}
+                  onPress={() =>
+                    navigation.navigate("Settings", {
+                      userSettings: settings,
+                      setSettings: setSettings,
+                    })
+                  }
+                >
+                  <Text style={styles.flag}>
+                    {settings?.nativeLanguageFlag}
+                  </Text>
+
+                  <Text style={[styles.language, { color: "#000000" }]}>
+                    {settings?.nativelanguage}
+                  </Text>
+
+                  <Text style={[styles.arrow, { color: "#000000" }]}>→</Text>
+
+                  <Text style={styles.flag}>
+                    {settings?.targetLanguageFlag}
+                  </Text>
+
+                  <Text style={[styles.language, { color: "#000000" }]}>
+                    {settings?.targetlanguage}
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.chevron,
+                      { color: isDarkMode ? "#FFF4E6" : "#000000" },
+                    ]}
+                  >
+                    ›
+                  </Text>
+                </WalkthroughTouchable>
+              </WalkthroughStep>
+
+              {/* Continue Reading */}
+
+              <View
+                style={styles.sectionHeader}
+                onLayout={trackContainer("storiesHeader")}
+              >
+                <View style={styles.sectionTitleGroup}>
+                  <Image
+                    source={require("../assets/icons/book-icon.png")}
+                    style={styles.quickIconImage}
+                    resizeMode="contain"
+                    accessibilityLabel="Book"
+                  />
+                  <Text
+                    style={[
+                      styles.sectionTitle,
+                      { color: isDarkMode ? "#FFFCF5" : "#172033" },
+                    ]}
+                  >
+                    Continue Reading
+                  </Text>
+                </View>
+
+                <WalkthroughStep name="stories">
+                  <WalkthroughTouchable
+                    onLayout={track("stories", "storiesHeader")}
+                    onPress={() => navigation.navigate("Stories")}
+                  >
+                    <Text style={styles.seeAll}>See all ›</Text>
+                  </WalkthroughTouchable>
+                </WalkthroughStep>
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.articleCard,
+                  { backgroundColor: isDarkMode ? "#f0e6d8" : "#FFF4E6" },
+                ]}
+                onPress={() => {
+                  if (!lastReadPassage) {
+                    navigation.navigate("Import");
+                    return;
+                  }
+
+                  navigation.navigate("Reader", {
+                    id: lastReadPassage.id,
+                    title: lastReadPassage.title,
+                    imageUrl: lastReadPassage.imageUrl,
+                  });
+                }}
+              >
+                <View style={styles.image}>
+                  <Image
+                    source={
+                      lastReadPassage?.imageUrl
+                        ? { uri: lastReadPassage.imageUrl }
+                        : fallbackPassageImage
+                    }
+                    style={
+                      lastReadPassage?.imageUrl
+                        ? styles.storyImage
+                        : styles.avatarImage
+                    }
+                  />
+                </View>
+
+                <View style={styles.articleInfo}>
+                  <Text style={[styles.articleTitle, { color: "#000000" }]}>
+                    {lastReadPassage?.title ?? "No story in progress"}
+                  </Text>
+
+                  <Text style={[styles.articleMeta, { color: "#4B5563" }]}>
+                    {lastReadPassage
+                      ? "Continue where you left off"
+                      : "Start reading a story"}
+                  </Text>
+                </View>
+
+                <View style={styles.playButton}>
+                  <MaterialCommunityIcons
+                    name={lastReadPassage ? "arrow-right" : "plus"}
+                    size={27}
+                    color="#FFFFFF"
+                  />
+                </View>
+              </TouchableOpacity>
+
+              {/* Quick Actions */}
+
+              <View style={styles.grid} onLayout={trackContainer("grid")}>
+                <WalkthroughStep name="vocabulary">
+                  <WalkthroughTouchable
+                    onLayout={track("vocabulary", "grid")}
+                    style={[styles.quickCard, { backgroundColor: "#FAC048" }]}
+                    onPress={() => navigation.navigate("Vocabulary")}
+                  >
+                    <Image
+                      source={require("../assets/icons/book-icon.png")}
+                      style={styles.quickIconImage}
+                      resizeMode="contain"
+                      accessibilityLabel="Book"
+                    />
+
+                    <Text style={[styles.quickTitle, { color: "#000000" }]}>
+                      My Vocabulary
+                    </Text>
+
+                    <Text style={[styles.quickSubtitle, { color: "#000000" }]}>
+                      {vocabularyCount}{" "}
+                      {vocabularyCount === 1 ? "word" : "words"}
+                    </Text>
+                  </WalkthroughTouchable>
+                </WalkthroughStep>
+
+                <WalkthroughStep name="flashcards">
+                  <WalkthroughTouchable
+                    onLayout={track("flashcards", "grid")}
+                    style={[
+                      styles.quickCard,
+                      styles.quickCardCentered,
+                      { backgroundColor: "#DDB8F3" },
+                    ]}
+                    onPress={() => navigation.navigate("Flashcards")}
+                  >
+                    <View style={styles.quickTitleRow}>
+                      <Image
+                        source={require("../assets/icons/flashcard-icon.png")}
+                        style={styles.quickIconImage}
+                        resizeMode="contain"
+                        accessibilityLabel="Flashcards"
+                      />
+                      <View style={styles.quickTextBlock}>
+                        <Text
+                          style={[
+                            styles.quickTitle,
+                            styles.flashcardsTitle,
+                            { color: "#000000" },
+                          ]}
+                        >
+                          Flashcards
+                        </Text>
+                        {/* <Text style={[styles.quickSubtitle, { color: "#231e1e" }]}>
                     12 due
                   </Text> */}
-                </View>
-              </View>
-            </WalkthroughTouchable>
-            </WalkthroughStep>
+                      </View>
+                    </View>
+                  </WalkthroughTouchable>
+                </WalkthroughStep>
 
-            <WalkthroughStep name="settings">
-            <WalkthroughTouchable
-              onLayout={track("settings", "grid")}
-              style={[
-                styles.quickCard,
-                styles.quickCardCentered,
-                { backgroundColor: "#93DFA1" },
-              ]}
-              onPress={() =>
-                navigation.navigate("Settings", {
-                  userSettings: settings,
-                  setSettings: setSettings,
-                })
-              }
-            >
-              <View style={styles.quickTitleRow}>
-                <Text style={styles.quickTitleEmoji}>⚙️</Text>
-                <Text style={[styles.quickTitle, { color: "#000000" }]}>
-                  Settings
-                </Text>
-              </View>
-            </WalkthroughTouchable>
-            </WalkthroughStep>
+                <WalkthroughStep name="settings">
+                  <WalkthroughTouchable
+                    onLayout={track("settings", "grid")}
+                    style={[
+                      styles.quickCard,
+                      styles.quickCardCentered,
+                      { backgroundColor: "#93DFA1" },
+                    ]}
+                    onPress={() =>
+                      navigation.navigate("Settings", {
+                        userSettings: settings,
+                        setSettings: setSettings,
+                      })
+                    }
+                  >
+                    <View style={styles.quickTitleRow}>
+                      <Text style={styles.quickTitleEmoji}>⚙️</Text>
+                      <Text style={[styles.quickTitle, { color: "#000000" }]}>
+                        Settings
+                      </Text>
+                    </View>
+                  </WalkthroughTouchable>
+                </WalkthroughStep>
 
-            <WalkthroughStep name="podcast">
-            <WalkthroughTouchable
-              onLayout={track("podcast", "grid")}
-              style={[
-                styles.quickCard,
-                styles.quickCardCentered,
-                { backgroundColor: "#FDA96C" },
-              ]}
-              onPress={() => navigation.navigate("Podcast")}
-              accessibilityRole="button"
-              accessibilityLabel="Open podcast search"
-            >
-              <View style={styles.quickTitleRow}>
-                <Text style={styles.quickTitleEmoji}>🎙️</Text>
-                <View style={styles.quickTextBlock}>
-                  <Text style={[styles.quickTitle, { color: "#000000" }]}>
-                    Podcast (Beta)
-                  </Text>
-                  <Text style={[styles.quickSubtitle, { color: "#000000" }]}>
-                    Listen and learn
-                  </Text>
-                </View>
+                <WalkthroughStep name="podcast">
+                  <WalkthroughTouchable
+                    onLayout={track("podcast", "grid")}
+                    style={[
+                      styles.quickCard,
+                      styles.quickCardCentered,
+                      { backgroundColor: "#FDA96C" },
+                    ]}
+                    onPress={() => navigation.navigate("Podcast")}
+                    accessibilityRole="button"
+                    accessibilityLabel="Open podcast search"
+                  >
+                    <View style={styles.quickTitleRow}>
+                      <Text style={styles.quickTitleEmoji}>🎙️</Text>
+                      <View style={styles.quickTextBlock}>
+                        <Text style={[styles.quickTitle, { color: "#000000" }]}>
+                          Podcast (Beta)
+                        </Text>
+                        <Text
+                          style={[styles.quickSubtitle, { color: "#000000" }]}
+                        >
+                          Listen and learn
+                        </Text>
+                      </View>
+                    </View>
+                  </WalkthroughTouchable>
+                </WalkthroughStep>
               </View>
-            </WalkthroughTouchable>
-            </WalkthroughStep>
 
-            <WalkthroughStep name="podcast">
-            <WalkthroughTouchable
-              onLayout={track("podcast", "grid")}
-              style={[
-                styles.quickCard,
-                styles.quickCardCentered,
-                { backgroundColor: "#FDA96C" },
-              ]}
-              onPress={() => navigation.navigate("GameSelection")}
-              accessibilityRole="button"
-              accessibilityLabel="Open game list"
-            >
-              <View style={styles.quickTitleRow}>
-                <Text style={styles.quickTitleEmoji}>🎙️</Text>
-                <View style={styles.quickTextBlock}>
-                  <Text style={[styles.quickTitle, { color: "#000000" }]}>
-                    Games (Beta)
-                  </Text>
-                  <Text style={[styles.quickSubtitle, { color: "#000000" }]}>
-                    Play and learn
-                  </Text>
-                </View>
+              <View
+                style={[
+                  styles.quoteCard,
+                  { backgroundColor: isDarkMode ? "#f0e6d8" : "#FFF4E6" },
+                ]}
+              >
+                <Text style={styles.quoteHeading}>A little inspiration</Text>
+                {quoteLoading ? (
+                  <Text style={styles.quoteText}>Loading quote...</Text>
+                ) : quoteError ? (
+                  <>
+                    <Text style={styles.quoteError}>{quoteError}</Text>
+                    <TouchableOpacity
+                      onPress={() => setQuoteAttempt((attempt) => attempt + 1)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Retry loading quote"
+                    >
+                      <Text style={styles.quoteRetry}>Try again</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.quoteText}>{quote?.quote}</Text>
+                    <Text style={styles.quoteAuthor}>— {quote?.quoter}</Text>
+                  </>
+                )}
               </View>
-            </WalkthroughTouchable>
-            </WalkthroughStep>
-          </View>
-
-          <View
-            style={[
-              styles.quoteCard,
-              { backgroundColor: isDarkMode ? "#f0e6d8" : "#FFF4E6" },
-            ]}
-          >
-            <Text style={styles.quoteHeading}>A little inspiration</Text>
-            {quoteLoading ? (
-              <Text style={styles.quoteText}>Loading quote...</Text>
-            ) : quoteError ? (
-              <>
-                <Text style={styles.quoteError}>{quoteError}</Text>
-                <TouchableOpacity
-                  onPress={() => setQuoteAttempt((attempt) => attempt + 1)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Retry loading quote"
-                >
-                  <Text style={styles.quoteRetry}>Try again</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={styles.quoteText}>{quote?.quote}</Text>
-                <Text style={styles.quoteAuthor}>— {quote?.quoter}</Text>
-              </>
-            )}
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    </ImageBackground>
-        {panelOpen ? (
-          <TouchableOpacity
-            style={styles.panelBackdrop}
-            activeOpacity={1}
-            onPress={() => setPanelVisible(false)}
-            accessibilityRole="button"
-            accessibilityLabel="Close recent panel"
-          />
-        ) : null}
+            </ScrollView>
+          </SafeAreaView>
+        </ImageBackground>
       </Animated.View>
+      {panelOpen ? (
+        <TouchableOpacity
+          style={[styles.panelBackdrop, { left: panelWidth }]}
+          activeOpacity={1}
+          onPress={() => setPanelVisible(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Close recent panel"
+        />
+      ) : null}
     </View>
   );
 }
@@ -741,6 +804,7 @@ const styles = StyleSheet.create({
   panelBackdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0, 0, 0, 0.3)",
+    zIndex: 1,
   },
 
   content: {

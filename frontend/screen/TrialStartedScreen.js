@@ -98,7 +98,7 @@ export default function TrialStartedScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#FFFFFF" },
+  safeArea: { flex: 1, backgroundColor: "#000000" },
   content: {
     flex: 1,
     alignItems: "center",

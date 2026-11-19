@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -17,6 +18,7 @@ import {
   View,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import Svg, { Path } from "react-native-svg";
 import * as AppleAuthentication from "expo-apple-authentication";
 import * as Crypto from "expo-crypto";
 import { OAuthProvider, signInWithCredential } from "firebase/auth";
@@ -84,8 +86,12 @@ export default function LoginScreen({ navigation }) {
       Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
     const hideEvent =
       Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const show = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
-    const hide = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
+    const show = Keyboard.addListener(showEvent, () =>
+      setKeyboardVisible(true),
+    );
+    const hide = Keyboard.addListener(hideEvent, () =>
+      setKeyboardVisible(false),
+    );
     return () => {
       show.remove();
       hide.remove();
@@ -220,50 +226,64 @@ export default function LoginScreen({ navigation }) {
 
   if (showWelcome) {
     return (
-      <SafeAreaView style={[styles.safeArea]}>
-        <ImageBackground
+      <SafeAreaView style={[styles.safeArea, styles.welcomeSafeArea]}>
+        {/* <ImageBackground
           source={require("../assets/images/masot/poppy_loadingscreen.png")}
           style={styles.loginBackground}
           imageStyle={styles.loginBackgroundImage}
           resizeMode="cover"
           accessible={false}
-        />
+        /> */}
         <Animated.View style={[styles.transitionLayer, transitionStyle]}>
-          <View style={styles.welcomeScreen}>
-            <View style={styles.welcomeHero}></View>
+          <ScrollView contentContainerStyle={styles.welcomeScreen}>
+            <View style={styles.welcomeHero}>
+              <View style={styles.welcomeImageWrapper}>
+                <Image
+                  source={require("../assets/images/masot/poppy_loadingscreen.png")}
+                  style={[
+                    styles.welcomeHeroImage,
+                    compactLayout && styles.compactWelcomeHeroImage,
+                  ]}
+                  resizeMode="cover"
+                  accessible={false}
+                />
+                <Svg
+                  width={compactLayout ? 57 : 90}
+                  height={compactLayout ? 57 : 90}
+                  viewBox="0 0 90 90"
+                  style={styles.welcomeScribble}
+                  pointerEvents="none"
+                  accessible={false}
+                >
+                  <Path
+                    d="M5 25 L25 5 L10 33 L32 9 L15 40 L39 14 L21 47 L45 20 L28 53 L52 27 L35 60 L59 34 L42 67 L66 41 L49 74 L73 48 L56 81 L80 55"
+                    fill="none"
+                    stroke="#1ED760"
+                    strokeWidth={4}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </Svg>
+              </View>
+              <Text style={styles.welcomeTitle}>
+                Have fun learning.{"\n\n"}
+                From your favorite Stories and Podcasts.
+              </Text>
+            </View>
 
             <View style={styles.welcomeActions}>
               <TouchableOpacity
-                style={[
-                  styles.welcomePrimaryButton,
-                  {
-                    backgroundColor: theme.colors.primary,
-                    borderBottomColor: theme.colors.primaryDark,
-                  },
-                ]}
+                style={styles.welcomePrimaryButton}
                 onPress={() =>
                   navigation.navigate("OnboardingLearningLanguageScreen")
                 }
                 accessibilityRole="button"
                 accessibilityLabel="Get started and create an account"
               >
-                <Text
-                  style={[
-                    styles.welcomePrimaryText,
-                    { color: theme.colors.primaryText },
-                  ]}
-                >
-                  GET STARTED
-                </Text>
+                <Text style={styles.welcomePrimaryText}>Get started</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[
-                  styles.welcomeSecondaryButton,
-                  {
-                    backgroundColor: theme.colors.surface,
-                    borderColor: theme.colors.border,
-                  },
-                ]}
+                style={styles.welcomeSecondaryButton}
                 onPress={() =>
                   animateScreenChange(
                     () => {
@@ -277,17 +297,12 @@ export default function LoginScreen({ navigation }) {
                 accessibilityRole="button"
                 accessibilityLabel="I already have an account"
               >
-                <Text
-                  style={[
-                    styles.welcomeSecondaryText,
-                    { color: theme.colors.primaryDark },
-                  ]}
-                >
-                  I ALREADY HAVE AN ACCOUNT
+                <Text style={styles.welcomeSecondaryText}>
+                  I already have an account
                 </Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </ScrollView>
         </Animated.View>
       </SafeAreaView>
     );
@@ -296,13 +311,13 @@ export default function LoginScreen({ navigation }) {
   if (showPasswordReset) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <ImageBackground
+        {/* <ImageBackground
           source={require("../assets/images/masot/backgroundimagequestion.png")}
           style={styles.loginBackground}
           imageStyle={styles.loginBackgroundImage}
           resizeMode="cover"
           accessible={false}
-        />
+        /> */}
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -315,7 +330,11 @@ export default function LoginScreen({ navigation }) {
               accessibilityRole="button"
               accessibilityLabel="Back to sign in"
             >
-              <MaterialCommunityIcons name="arrow-left" size={24} color="#203B32" />
+              <MaterialCommunityIcons
+                name="arrow-left"
+                size={24}
+                color="#203B32"
+              />
             </TouchableOpacity>
           </View>
           <View style={styles.content}>
@@ -365,7 +384,8 @@ export default function LoginScreen({ navigation }) {
               ) : null}
               {!isFirebaseConfigured ? (
                 <Text style={[styles.error, { color: theme.colors.danger }]}>
-                  Firebase is not configured. Configure it before resetting your password.
+                  Firebase is not configured. Configure it before resetting your
+                  password.
                 </Text>
               ) : null}
               <TouchableOpacity
@@ -401,13 +421,13 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <SafeAreaView style={[styles.safeArea]}>
-      <ImageBackground
+      {/* <ImageBackground
         source={require("../assets/images/masot/backgroundimagequestion.png")}
         style={styles.loginBackground}
         imageStyle={styles.loginBackgroundImage}
         resizeMode="cover"
         accessible={false}
-      />
+      /> */}
       <Animated.View style={[styles.transitionLayer, transitionStyle]}>
         <KeyboardAvoidingView
           style={styles.flex}
@@ -437,7 +457,9 @@ export default function LoginScreen({ navigation }) {
               />
             </TouchableOpacity>
           </View>
-          <View style={[styles.content, compactLayout && styles.compactContent]}>
+          <View
+            style={[styles.content, compactLayout && styles.compactContent]}
+          >
             <View style={styles.formContent}>
               <View
                 style={[styles.heading, compactLayout && styles.compactHeading]}
@@ -483,7 +505,10 @@ export default function LoginScreen({ navigation }) {
               <View style={styles.formActions}>
                 <View style={styles.form}>
                   <View
-                    style={[styles.inputRow, compactLayout && styles.compactInputRow]}
+                    style={[
+                      styles.inputRow,
+                      compactLayout && styles.compactInputRow,
+                    ]}
                   >
                     <MaterialCommunityIcons
                       name="email-outline"
@@ -506,7 +531,10 @@ export default function LoginScreen({ navigation }) {
                   </View>
 
                   <View
-                    style={[styles.inputRow, compactLayout && styles.compactInputRow]}
+                    style={[
+                      styles.inputRow,
+                      compactLayout && styles.compactInputRow,
+                    ]}
                   >
                     <MaterialCommunityIcons
                       name="lock-outline"
@@ -593,92 +621,99 @@ export default function LoginScreen({ navigation }) {
                 </View>
 
                 {!keyboardVisible && (
-                <View>
-                <View
-                  style={[styles.dividerRow, compactLayout && styles.compactDividerRow]}
-                >
-                  <View style={styles.divider} />
-                  <Text style={styles.orText}>OR CONTINUE WITH</Text>
-                  <View style={styles.divider} />
-                </View>
-
-                {hasGoogleConfiguration ? (
-                  <GoogleSignInButton
-                    disabled={!isFirebaseConfigured || isBusy}
-                    containerStyle={[
-                      styles.googleProviderButton,
-                      compactLayout && styles.compactButton,
-                    ]}
-                    textStyle={styles.providerButtonText}
-                    iconStyle={styles.providerIcon}
-                    onStart={() => {
-                      setErrorMessage(null);
-                      setIsBusy(true);
-                    }}
-                    onFinish={() => setIsBusy(false)}
-                    onError={(error) =>
-                      setErrorMessage(friendlyAuthError(error))
-                    }
-                  />
-                ) : (
-                  <Text
-                    style={[
-                      styles.providerSetupHint,
-                      { color: theme.colors.textSecondary },
-                    ]}
-                  >
-                    Add the Google OAuth client IDs to enable Google sign-in.
-                  </Text>
-                )}
-
-                <FacebookSignInButton
-                  disabled={!isFirebaseConfigured || isBusy}
-                  busy={isBusy}
-                  containerStyle={[
-                    styles.facebookProviderButton,
-                    compactLayout && styles.compactProviderButton,
-                    (!isFirebaseConfigured || isBusy) && styles.disabledButton,
-                  ]}
-                  textStyle={styles.facebookProviderText}
-                  onStart={() => {
-                    setErrorMessage(null);
-                    setIsBusy(true);
-                  }}
-                  onFinish={() => setIsBusy(false)}
-                  onError={(error) => setErrorMessage(friendlyAuthError(error))}
-                />
-
-                {Platform.OS === "ios" && isFirebaseConfigured ? (
-                  appleAvailable ? (
-                    <TouchableOpacity
+                  <View>
+                    <View
                       style={[
-                        styles.appleButton,
-                        compactLayout && styles.compactProviderButton,
+                        styles.dividerRow,
+                        compactLayout && styles.compactDividerRow,
                       ]}
-                      onPress={handleAppleSignIn}
-                      accessibilityRole="button"
                     >
-                      <MaterialCommunityIcons
-                        name="apple"
-                        size={26}
-                        color="#FFFFFF"
+                      <View style={styles.divider} />
+                      <Text style={styles.orText}>OR CONTINUE WITH</Text>
+                      <View style={styles.divider} />
+                    </View>
+
+                    {hasGoogleConfiguration ? (
+                      <GoogleSignInButton
+                        disabled={!isFirebaseConfigured || isBusy}
+                        containerStyle={[
+                          styles.googleProviderButton,
+                          compactLayout && styles.compactButton,
+                        ]}
+                        textStyle={styles.providerButtonText}
+                        iconStyle={styles.providerIcon}
+                        onStart={() => {
+                          setErrorMessage(null);
+                          setIsBusy(true);
+                        }}
+                        onFinish={() => setIsBusy(false)}
+                        onError={(error) =>
+                          setErrorMessage(friendlyAuthError(error))
+                        }
                       />
-                      <Text style={styles.appleButtonText}>
-                        Continue with Apple
+                    ) : (
+                      <Text
+                        style={[
+                          styles.providerSetupHint,
+                          { color: theme.colors.textSecondary },
+                        ]}
+                      >
+                        Add the Google OAuth client IDs to enable Google
+                        sign-in.
                       </Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <Text
-                      style={[
-                        styles.providerSetupHint,
-                        { color: theme.colors.textSecondary },
+                    )}
+
+                    <FacebookSignInButton
+                      disabled={!isFirebaseConfigured || isBusy}
+                      busy={isBusy}
+                      containerStyle={[
+                        styles.facebookProviderButton,
+                        compactLayout && styles.compactProviderButton,
+                        (!isFirebaseConfigured || isBusy) &&
+                          styles.disabledButton,
                       ]}
-                    >
-                      Apple sign-in is available on supported Apple devices.
-                    </Text>
-                  )
-                ) : null}
-                </View>
+                      textStyle={styles.facebookProviderText}
+                      onStart={() => {
+                        setErrorMessage(null);
+                        setIsBusy(true);
+                      }}
+                      onFinish={() => setIsBusy(false)}
+                      onError={(error) =>
+                        setErrorMessage(friendlyAuthError(error))
+                      }
+                    />
+
+                    {Platform.OS === "ios" && isFirebaseConfigured ? (
+                      appleAvailable ? (
+                        <TouchableOpacity
+                          style={[
+                            styles.appleButton,
+                            compactLayout && styles.compactProviderButton,
+                          ]}
+                          onPress={handleAppleSignIn}
+                          accessibilityRole="button"
+                        >
+                          <MaterialCommunityIcons
+                            name="apple"
+                            size={26}
+                            color="#FFFFFF"
+                          />
+                          <Text style={styles.appleButtonText}>
+                            Continue with Apple
+                          </Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <Text
+                          style={[
+                            styles.providerSetupHint,
+                            { color: theme.colors.textSecondary },
+                          ]}
+                        >
+                          Apple sign-in is available on supported Apple devices.
+                        </Text>
+                      )
+                    ) : null}
+                  </View>
                 )}
               </View>
             </View>
@@ -691,6 +726,7 @@ export default function LoginScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "transparent" },
+  welcomeSafeArea: { backgroundColor: "#000000" },
   loginBackground: {
     ...StyleSheet.absoluteFill,
   },
@@ -710,17 +746,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   welcomeScreen: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: "space-between",
     paddingHorizontal: 28,
-    paddingTop: 1,
+    paddingTop: 24,
     paddingBottom: 28,
   },
   welcomeHero: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingBottom: 25,
+    paddingVertical: 24,
+  },
+  welcomeImageWrapper: {
+    position: "relative",
+  },
+  welcomeScribble: {
+    position: "absolute",
+    top: -12,
+    right: -18,
+  },
+  welcomeHeroImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+  },
+  compactWelcomeHeroImage: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
   },
   welcomeMascot: {
     width: "90%",
@@ -728,8 +782,12 @@ const styles = StyleSheet.create({
     height: 290,
   },
   welcomeTitle: {
-    fontSize: 34,
-    fontWeight: "900",
+    maxWidth: 420,
+    marginTop: 24,
+    color: "#FFFFFF",
+    fontFamily: "Inter_700Bold",
+    fontSize: 28,
+    lineHeight: 38,
     textAlign: "center",
   },
   welcomeSubtitle: {
@@ -738,31 +796,43 @@ const styles = StyleSheet.create({
     lineHeight: 25,
     textAlign: "center",
   },
-  welcomeActions: { gap: 14 },
+  welcomeActions: {
+    width: "100%",
+    maxWidth: 460,
+    alignSelf: "center",
+    gap: 12,
+  },
   welcomePrimaryButton: {
     minHeight: 58,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 18,
-    borderBottomWidth: 5,
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: "#1ED760",
   },
   welcomePrimaryText: {
+    color: "#000000",
+    fontFamily: "Inter_700Bold",
     fontSize: 16,
-    fontWeight: "900",
-    letterSpacing: 1,
+    textAlign: "center",
   },
   welcomeSecondaryButton: {
     minHeight: 58,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
-    borderBottomWidth: 5,
-    borderRadius: 18,
+    borderWidth: 1,
+    borderRadius: 999,
+    borderColor: "#727272",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: "transparent",
   },
   welcomeSecondaryText: {
-    fontSize: 14,
-    fontWeight: "900",
-    letterSpacing: 0.5,
+    color: "#FFFFFF",
+    fontFamily: "Inter_700Bold",
+    fontSize: 16,
+    textAlign: "center",
   },
   welcomeBackButton: {
     width: 44,

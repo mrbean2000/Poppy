@@ -1,11 +1,8 @@
 import axios from "axios";
 import { File, Paths } from "expo-file-system";
 
-// const BACKEND_URL = "http://192.168.0.11:8080/api";
-// const NODE_BACKEND_URL = "http://192.168.0.11:3001";
-
-const BACKEND_URL = "http://192.168.115.60:8080/api";
-const NODE_BACKEND_URL = "http://192.168.115.60:3001";
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+const NODE_BACKEND_URL = process.env.EXPO_PUBLIC_NODE_BACKEND_URL;
 
 export async function requestRecentHistory(kind, userId, item) {
   try {
@@ -21,6 +18,8 @@ export async function requestRecentHistory(kind, userId, item) {
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
+      console.log("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+      console.error("Axios error:", error);
       const status = error.response?.status;
       throw new Error(
         status
@@ -266,6 +265,10 @@ export async function getUserVocabulary(userId, language) {
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
+      console.log("@@@@@@@@@@@@@@@@@@@@@@@@");
+      console.log(userId);
+      console.log(language);
+      console.log(error);
       const status = error.response?.status;
       const message = status
         ? `Failed to load vocabulary (HTTP ${status}).`
@@ -1086,6 +1089,7 @@ export async function getUserProfileByFirebaseUid(firebaseUid) {
     const response = await axios.get(
       `${BACKEND_URL}/users/firebase/${encodeURIComponent(firebaseUid)}`,
     );
+    console.log(response);
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {

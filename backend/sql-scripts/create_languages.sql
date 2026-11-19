@@ -1,6 +1,8 @@
-CREATE TABLE languages (
-   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-   language VARCHAR(255),
-   countryFlag VARCHAR(255),
-   createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
+CREATE TABLE IF NOT EXISTS public.languages
+(
+    id bigint NOT NULL GENERATED ALWAYS AS IDENTITY,
+    language character varying(255),
+    countryflag character varying(255),
+    createdat timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT languages_pkey PRIMARY KEY (id)
+);
