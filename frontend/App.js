@@ -14,6 +14,8 @@ import ImportUrlScreen from "./screen/ImportUrlScreen";
 import ImportYourselfScreen from "./screen/ImportYourselfScreen";
 import ImportCameraScreen from "./screen/ImportCameraScreen";
 import PodcastScreen from "./screen/PodcastScreen";
+import GameSelectionScreen from "./screen/GameSelectionScreen";
+import { GameList } from "./games/index";
 import PodcastEpisodesScreen from "./screen/PodcastEpisodesScreen";
 import PodcastPlayerScreen from "./screen/PodcastPlayerScreen";
 import RecentHistoryScreen from "./screen/RecentHistoryScreen";
@@ -324,6 +326,20 @@ function AppNavigation() {
               component={ImportCameraScreen}
               options={{ headerShown: false }}
             />
+            <Stack.Screen
+              name="GameSelection"
+              component={GameSelectionScreen}
+              options={{ headerShown: false }}
+            />
+            {
+              GameList.map((game) => (
+                <Stack.Screen
+                  name={game.name}
+                  component={game.component}
+                  options={{ headerShown: false }}
+                />
+              ))
+            }
           </>
         ) : (
           <>
