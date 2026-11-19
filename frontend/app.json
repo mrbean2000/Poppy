@@ -41,7 +41,7 @@
           "image": "./assets/images/masot/poppy_loadingscreen.png",
           "imageWidth": 400,
           "resizeMode": "cover",
-          "backgroundColor": "#F7F1E8"
+          "backgroundColor": "#000000"
         }
       ]
     ],

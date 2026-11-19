@@ -3,7 +3,6 @@ import {
   Animated,
   ActivityIndicator,
   Image,
-  ImageBackground,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -200,12 +199,6 @@ export default function OnboardingLearningLanguageScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ImageBackground
-        source={require("../assets/images/masot/backgroundimagequestion.png")}
-        style={styles.backgroundImage}
-        resizeMode="cover"
-        accessible={false}
-      />
       <View style={styles.screen}>
         <View style={styles.topBar}>
           <Animated.View
@@ -224,15 +217,12 @@ export default function OnboardingLearningLanguageScreen({ navigation }) {
             <MaterialCommunityIcons
               name="arrow-left"
               size={28}
-              color="#203B32"
+              color="#FFFFFF"
             />
           </TouchableOpacity>
           </Animated.View>
           <View
-            style={[
-              styles.progressTrack,
-              { backgroundColor: "#DDD4C4" },
-            ]}
+            style={styles.progressTrack}
             accessibilityRole="progressbar"
             accessibilityLabel={`Onboarding step ${currentStep} of 7`}
             accessibilityValue={{ min: 0, max: 7, now: currentStep }}
@@ -242,7 +232,6 @@ export default function OnboardingLearningLanguageScreen({ navigation }) {
                 styles.progressFill,
                 {
                   width: currentStep === 1 ? "14.29%" : "28.57%",
-                  backgroundColor: "#FFD044",
                 },
               ]}
             />
@@ -294,13 +283,8 @@ export default function OnboardingLearningLanguageScreen({ navigation }) {
 
         {isLoading ? (
           <View style={styles.messageContainer}>
-            <ActivityIndicator size="large" color={theme.colors.primary} />
-            <Text
-              style={[
-                styles.messageText,
-                { color: theme.colors.textSecondary },
-              ]}
-            >
+            <ActivityIndicator size="large" color="#1ED760" />
+            <Text style={styles.messageText}>
               Loading languages...
             </Text>
           </View>
@@ -313,21 +297,14 @@ export default function OnboardingLearningLanguageScreen({ navigation }) {
               onPress={() => setRetryCount((count) => count + 1)}
               accessibilityRole="button"
             >
-              <Text
-                style={[styles.retryText, { color: theme.colors.primaryDark }]}
-              >
+              <Text style={styles.retryText}>
                 Try again
               </Text>
             </TouchableOpacity>
           </View>
         ) : languages.length === 0 ? (
           <View style={styles.messageContainer}>
-            <Text
-              style={[
-                styles.messageText,
-                { color: theme.colors.textSecondary },
-              ]}
-            >
+            <Text style={styles.messageText}>
               {currentStep === 1
                 ? "No languages are available yet."
                 : "No languages are available to learn yet."}
@@ -380,7 +357,7 @@ export default function OnboardingLearningLanguageScreen({ navigation }) {
                     <MaterialCommunityIcons
                       name="check"
                       size={19}
-                      color="#203B32"
+                      color="#000000"
                       style={styles.selectionCheck}
                     />
                   ) : null}
@@ -423,10 +400,7 @@ export default function OnboardingLearningLanguageScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#F7F1E8" },
-  backgroundImage: {
-    ...StyleSheet.absoluteFill,
-  },
+  safeArea: { flex: 1, backgroundColor: "#000000" },
   screen: { flex: 1, backgroundColor: "transparent" },
   topBar: {
     flexDirection: "row",
@@ -442,10 +416,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 22,
-    backgroundColor: "#FFFCF5",
-    borderWidth: 2,
-    borderColor: "#F9D96F",
-    elevation: 3,
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: "#727272",
   },
   content: {
     flex: 1,
@@ -458,13 +431,13 @@ const styles = StyleSheet.create({
     height: 18,
     overflow: "hidden",
     borderRadius: 999,
-    backgroundColor: "#DDD4C4",
+    backgroundColor: "#333333",
   },
   progressFill: {
     width: "14.29%",
     height: "100%",
     borderRadius: 999,
-    backgroundColor: "#FFD044",
+    backgroundColor: "#1ED760",
   },
   prompt: {
     flexDirection: "row",
@@ -488,10 +461,10 @@ const styles = StyleSheet.create({
     marginLeft: 4,
     paddingHorizontal: 18,
     paddingVertical: 16,
-    borderWidth: 4,
-    borderColor: "#F9D96F",
+    borderWidth: 1,
+    borderColor: "#727272",
     borderRadius: 28,
-    backgroundColor: "#FFFCF5",
+    backgroundColor: "#181818",
   },
   speechBubbleTail: {
     position: "absolute",
@@ -499,27 +472,24 @@ const styles = StyleSheet.create({
     top: "48%",
     width: 23,
     height: 23,
-    backgroundColor: "#FFFCF5",
-    borderLeftWidth: 4,
-    borderBottomWidth: 4,
-    borderColor: "#F9D96F",
+    backgroundColor: "#181818",
+    borderLeftWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "#727272",
     transform: [{ rotate: "45deg" }],
   },
   speechBubbleText: {
-    color: "#203B32",
+    color: "#FFFFFF",
+    fontFamily: "Inter_700Bold",
     fontSize: 16,
     lineHeight: 22,
-    fontWeight: "800",
   },
   heading: {
     marginHorizontal: 22,
     marginBottom: 12,
-    color: "#18382F",
+    color: "#FFFFFF",
+    fontFamily: "Inter_700Bold",
     fontSize: 22,
-    fontWeight: "900",
-    textShadowColor: "rgba(255, 252, 245, 0.9)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
   },
   languageList: { flex: 1 },
   languageListContent: {
@@ -533,18 +503,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 16,
     borderWidth: 2,
-    borderColor: "#EAE4D9",
+    borderColor: "#727272",
     borderRadius: 22,
-    backgroundColor: "rgba(255, 253, 248, 0.96)",
-    shadowColor: "#5B4932",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.12,
-    shadowRadius: 5,
-    elevation: 3,
+    backgroundColor: "#181818",
   },
   languageRowSelected: {
-    borderColor: "#F6C938",
-    backgroundColor: "rgba(255, 244, 202, 0.96)",
+    borderColor: "#1ED760",
+    backgroundColor: "#173B27",
   },
   languageFlag: {
     width: 58,
@@ -553,9 +518,9 @@ const styles = StyleSheet.create({
   languageName: {
     flex: 1,
     marginLeft: 10,
-    color: "#203B32",
+    color: "#FFFFFF",
+    fontFamily: "Inter_700Bold",
     fontSize: 18,
-    fontWeight: "800",
   },
   selectionCheck: {
     width: 34,
@@ -564,7 +529,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     borderRadius: 17,
     overflow: "hidden",
-    backgroundColor: "#F6C938",
+    backgroundColor: "#1ED760",
   },
   messageContainer: {
     flex: 1,
@@ -574,14 +539,17 @@ const styles = StyleSheet.create({
   },
   messageText: {
     marginTop: 12,
+    color: "#B3B3B3",
+    fontFamily: "Inter_700Bold",
     fontSize: 14,
     lineHeight: 20,
     textAlign: "center",
   },
   retryText: {
     marginTop: 16,
+    color: "#1ED760",
+    fontFamily: "Inter_700Bold",
     fontSize: 14,
-    fontWeight: "800",
   },
   footer: {
     paddingHorizontal: 24,
@@ -589,19 +557,16 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
   },
   continueButton: {
-    minHeight: 70,
+    minHeight: 58,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 25,
-    borderBottomWidth: 4,
-    borderBottomColor: "#DFAE24",
-    backgroundColor: "#FFD044",
+    borderRadius: 999,
+    backgroundColor: "#1ED760",
   },
   continueDisabled: { opacity: 0.45 },
   continueText: {
-    color: "#203B32",
-    fontSize: 17,
-    fontWeight: "900",
-    letterSpacing: 1.3,
+    color: "#000000",
+    fontFamily: "Inter_700Bold",
+    fontSize: 16,
   },
 });

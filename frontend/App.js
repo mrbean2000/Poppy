@@ -35,9 +35,14 @@ import OnboardingReminderScreen from "./screen/OnboardingReminderScreen";
 import TrialOfferScreen from "./screen/TrialOfferScreen";
 import TrialStartedScreen from "./screen/TrialStartedScreen";
 import { ThemeProvider } from "./theme/ThemeContext";
-import { createNavigationContainerRef, NavigationContainer } from "@react-navigation/native";
+import {
+  createNavigationContainerRef,
+  DefaultTheme,
+  NavigationContainer,
+} from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Asset } from "expo-asset";
+import { Inter_700Bold, useFonts } from "@expo-google-fonts/inter";
 import * as SplashScreen from "expo-splash-screen";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 // import { Platform } from "react-native";
@@ -78,6 +83,7 @@ SplashScreen.preventAutoHideAsync().catch((error) => {
 
 function AppNavigation() {
   const { user, isLoading, checkSubscriptionStatus } = useAuth();
+  const [fontsLoaded, fontError] = useFonts({ Inter_700Bold });
   const navigationRef = useRef(createNavigationContainerRef()).current;
   const [areBackgroundImagesReady, setAreBackgroundImagesReady] =
     useState(false);
@@ -157,11 +163,17 @@ function AppNavigation() {
   }, [user, checkSubscriptionStatus]);
 
   // Wait for the subscription check so the navigator mounts with a valid initial route
-  if (isLoading || !areBackgroundImagesReady || !initialRouteName) return null;
+  if (fontError) throw fontError;
+  if (isLoading || !areBackgroundImagesReady || !initialRouteName || !fontsLoaded)
+    return null;
 
   const navigation = (
     <NavigationContainer
       ref={navigationRef}
+      theme={{
+        ...DefaultTheme,
+        colors: { ...DefaultTheme.colors, background: "#000000" },
+      }}
       onReady={() => {
         setActiveRoute(navigationRef.getCurrentRoute()?.name);
         SplashScreen.hideAsync().catch((error) => {
@@ -346,7 +358,7 @@ function AppNavigation() {
                 animation: "none",
                 gestureEnabled: false,
                 freezeOnBlur: false,
-                contentStyle: { backgroundColor: "#F7F1E8" },
+                contentStyle: { backgroundColor: "#000000" },
               }}
             />
             <Stack.Screen
@@ -358,7 +370,7 @@ function AppNavigation() {
                 gestureEnabled: false,
                 detachPreviousScreen: false,
                 freezeOnBlur: false,
-                contentStyle: { backgroundColor: "#F7F1E8" },
+                contentStyle: { backgroundColor: "#000000" },
               }}
             />
             <Stack.Screen
@@ -369,7 +381,7 @@ function AppNavigation() {
                 animation: "none",
                 gestureEnabled: false,
                 freezeOnBlur: false,
-                contentStyle: { backgroundColor: "#F7F1E8" },
+                contentStyle: { backgroundColor: "#000000" },
               }}
             />
             <Stack.Screen
@@ -397,7 +409,7 @@ function AppNavigation() {
                 headerShown: false,
                 animation: "none",
                 gestureEnabled: false,
-                contentStyle: { backgroundColor: "#F7F1E8" },
+                contentStyle: { backgroundColor: "#000000" },
               }}
             />
             <Stack.Screen

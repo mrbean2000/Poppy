@@ -203,7 +203,7 @@ export default function OnboardingWeeklyGoalSummaryScreen({
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#F7F1E8" },
+  safeArea: { flex: 1, backgroundColor: "#000000" },
   backgroundImage: { ...StyleSheet.absoluteFill },
   screen: { flex: 1, backgroundColor: "transparent" },
   contentAnimated: { flex: 1 },

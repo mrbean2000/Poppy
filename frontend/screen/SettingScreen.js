@@ -353,7 +353,7 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: "#F7F7F7",
+    backgroundColor: "#000000",
   },
   content: {
     padding: 20,

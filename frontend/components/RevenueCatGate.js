@@ -253,7 +253,7 @@ export default function RevenueCatGate({ user, children }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F7F1E8" },
+  container: { flex: 1, backgroundColor: "#000000" },
   content: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
   title: { fontSize: 28, fontWeight: "800", color: "#203B32", marginBottom: 16 },
   description: { fontSize: 16, color: "#3D414A", textAlign: "center", marginBottom: 16 },
